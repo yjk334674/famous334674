@@ -76,7 +76,6 @@ if not st.session_state.logged_in:
 # 📊 4. 登入成功後的主程式 (四大模組選單)
 # ==========================================
 else:
-    # 側邊欄狀態與模組導覽
     st.sidebar.title(f"👤 會員：{st.session_state.username}")
     module = st.sidebar.radio(
         "🗂️ 系統核心模組",
@@ -91,31 +90,78 @@ else:
     current_user = st.session_state.username
 
     # ---------------------------------------------------------
-    # 模組 1：總資產智慧管理
+    # 模組 1：總資產智慧管理 (已加入使用者輸入自有資產功能)
     # ---------------------------------------------------------
     if module == "1. 💰 總資產智慧管理":
         st.title("💰 總資產智慧管理大盤")
-        st.write("實時匯總您的現金、投資市值與貸款債務，計算您的個人淨資產。")
+        st.write("在此管理您的自有資產（活存、定存、現金等），並整合投資市值與貸款債務。")
         
-        # 從 Supabase 撈取各項數據計算淨資產
+        # 1. 取得使用者手動新增的自有資產數據
+        own_res = supabase.table("own_assets").select("*").eq("username", current_user).execute()
+        total_own_cash = sum(x["amount"] for x in own_res.data) if own_res.data else 0
+        
+        # 2. 取得日常記帳的收支流動餘額
         tx_res = supabase.table("transactions").select("type", "amount").eq("username", current_user).execute()
-        pf_res = supabase.table("portfolio").select("cost_basis", "current_value").eq("username", current_user).execute()
+        flow_cash = sum(x["amount"] for x in tx_res.data if x["type"] == "收入") - sum(x["amount"] for x in tx_res.data if x["type"] == "支出")
+        
+        # 總現金 = 手動輸入的資產 + 記帳流動餘額
+        actual_cash = total_own_cash + flow_cash
+        
+        # 3. 取得投資市值與貸款數據
+        pf_res = supabase.table("portfolio").select("current_value").eq("username", current_user).execute()
         ln_res = supabase.table("loans").select("principal").eq("username", current_user).execute()
         
-        cash = sum(x["amount"] for x in tx_res.data if x["type"] == "收入") - sum(x["amount"] for x in tx_res.data if x["type"] == "支出")
-        inv_val = sum(x["current_value"] for x in pf_res.data)
-        debt = sum(x["principal"] for x in ln_res.data)
-        net_worth = (cash + inv_val) - debt
+        inv_val = sum(x["current_value"] for x in pf_res.data) if pf_res.data else 0
+        debt = sum(x["principal"] for x in ln_res.data) if ln_res.data else 0
+        net_worth = (actual_cash + inv_val) - debt
         
+        # 儀表板視覺輸出
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("💵 可用現金餘額", f"{cash:,.0f} 元")
+        c1.metric("💵 可用現金總額 (含自有資產)", f"{actual_cash:,.0f} 元")
         c2.metric("📊 投資總市值", f"{inv_val:,.0f} 元")
         c3.metric("🚨 總貸款債務", f"{debt:,.0f} 元", delta_color="inverse")
         c4.metric("👑 個人淨資產 (Net Worth)", f"{net_worth:,.0f} 元")
         
         st.divider()
+        
+        # ---- 這裡就是讓使用者輸入與管理自有資產的地方 ----
+        col_input, col_table = st.columns([1, 2])
+        
+        with col_input:
+            st.subheader("➕ 新增/更新自有資產項目")
+            st.caption("例如：銀行活存、緊急預備金、郵局定存、儲蓄險現值、黃金等")
+            with st.form("own_asset_form"):
+                oa_name = st.text_input("資產項目名稱 (如: 富邦銀行活存、郵局定存)")
+                oa_amt = st.number_input("當前資產金額 (元)", min_value=0, step=10000, value=50000)
+                if st.form_submit_button("確認儲存資產"):
+                    if oa_name:
+                        # 檢查是否已存在同名資產
+                        exist_oa = supabase.table("own_assets").select("id").eq("username", current_user).eq("asset_name", oa_name).execute()
+                        if exist_oa.data:
+                            supabase.table("own_assets").update({"amount": oa_amt}).eq("id", exist_oa.data[0]["id"]).execute()
+                        else:
+                            supabase.table("own_assets").insert({"username": current_user, "asset_name": oa_name, "amount": oa_amt}).execute()
+                        st.success(f"✅ {oa_name} 已成功記入自有資產！")
+                        st.rerun()
+        
+        with col_table:
+            st.subheader("📋 自有資產清單明細")
+            if own_res.data:
+                df_own = pd.DataFrame(own_res.data)
+                st.dataframe(df_own[["asset_name", "amount"]], use_container_width=True)
+                
+                # 額外提供一個刪除按鈕
+                delete_target = st.selectbox("選擇要刪除或歸零的資產項目", ["-- 請選擇 --"] + [x["asset_name"] for x in own_res.data])
+                if st.button("❌ 刪除該項資產") and delete_target != "-- 請選擇 --":
+                    supabase.table("own_assets").delete().eq("username", current_user).eq("asset_name", delete_target).execute()
+                    st.success(f"已刪除 {delete_target}")
+                    st.rerun()
+            else:
+                st.info("💡 目前還沒有手動輸入任何基本資產項目，請在左側表單填入你的第一個銀行活存或定存項目！")
+        
+        st.divider()
         st.subheader("💡 資產健康度建議")
-        if debt > (cash + inv_val) * 0.5:
+        if debt > (actual_cash + inv_val) * 0.5:
             st.warning("⚠️ 您的負債比率偏高（超過總資產 50%），建議優先償還高利息貸款，或建立更穩健的應急現金流。")
         else:
             st.success("✅ 您的資產結構相當健康，負債比率在安全範圍內，請繼續保持定期定額投資！")
@@ -125,8 +171,7 @@ else:
     # ---------------------------------------------------------
     elif module == "2. 📈 投資組合與報酬追蹤":
         st.title("📈 投資組合與報酬追蹤系統")
-        
-        t1, t2 = st.tabs(["📊 現有庫存與報酬率", "⚙️ 定期定額複利試算(原功能)"])
+        t1, t2 = st.tabs(["📊 現有庫存與報酬率", "⚙️ 定期定額複利試算"])
         
         with t1:
             st.subheader("新增/更新投資標庫存")
@@ -137,7 +182,6 @@ else:
                 a_val = col_c.number_input("目前總市值 (元)", min_value=0, step=1000)
                 if st.form_submit_button("更新投資庫存"):
                     if a_name:
-                        # 檢查是否已有該標的
                         exist = supabase.table("portfolio").select("id").eq("username", current_user).eq("asset_name", a_name).execute()
                         if exist.data:
                             supabase.table("portfolio").update({"cost_basis": a_cost, "current_value": a_val}).eq("id", exist.data[0]["id"]).execute()
@@ -190,16 +234,14 @@ else:
     # ---------------------------------------------------------
     elif module == "3. 🏦 貸款與利息試算中心":
         st.title("🏦 借款、房貸、車貸頭期款與月付款利息試算")
-        
         col_l, col_r = st.columns([1, 1])
         with col_l:
             st.subheader("🧮 貸款條件輸入（本息平均攤還）")
-            l_name = st.text_input("貸款名稱項目（如：房貸、車貸自訂）", value="青年首購房貸")
+            l_name = st.text_input("貸款名稱項目", value="青年首購房貸")
             l_principal = st.number_input("貸款總金額 (元)", min_value=10000, value=8000000, step=50000)
             l_rate = st.number_input("年貸款利率 (%)", min_value=0.1, value=2.2, step=0.1)
             l_months = st.number_input("貸款年限/期數 (月)", min_value=1, value=360, step=12)
             
-            # 本息攤還公式計算
             monthly_rate = (l_rate / 100) / 12
             if monthly_rate > 0:
                 monthly_payment = (l_principal * monthly_rate * ((1 + monthly_rate) ** l_months)) / (((1 + monthly_rate) ** l_months) - 1)
@@ -236,7 +278,6 @@ else:
     # ---------------------------------------------------------
     elif module == "4. 📝 每日生活記帳":
         st.title("📝 日常隨手記帳模組")
-        
         col_la, col_ra = st.columns([1, 2])
         with col_la:
             st.subheader("➕ 新增收支明細")
@@ -258,11 +299,8 @@ else:
             tx_data = supabase.table("transactions").select("*").eq("username", current_user).order("date", desc=True).execute()
             if tx_data.data:
                 df_tx = pd.DataFrame(tx_data.data)
-                
-                # 簡單計算當月摘要
                 inc = df_tx[df_tx["type"] == "收入"]["amount"].sum()
                 exp = df_tx[df_tx["type"] == "支出"]["amount"].sum()
-                
                 st.markdown(f"🟢 **累計總收入**：`{inc:,}` 元 | 🔴 **累計總支出**：`{exp:,}` 元 | ⚖️ **收支淨額**：`{inc-exp:,}` 元")
                 st.dataframe(df_tx[["date", "type", "category", "amount", "note"]], use_container_width=True)
             else:
