@@ -7,41 +7,6 @@ from datetime import datetime
 # 設定網頁
 st.set_page_config(page_title="全方位資產與投資管理系統", page_icon="💼", layout="wide")
 
-import pandas as pd
-import streamlit as st
-import streamlit.components.v1 as components # 👈 1. 記得先在最上方引入這個套件
-from supabase import create_client, Client
-import hashlib
-from datetime import datetime
-
-# 設定網頁
-st.set_page_config(page_title="全方位資產與投資管理系統", page_icon="💼", layout="wide")
-
-# ==========================================
-# 📱 PWA 行動裝置/電腦 App 下載功能注入
-# ==========================================
-# 這段 JavaScript 會自動偵測使用者的瀏覽器，並提示使用者可以將此網頁「新增至主畫面」下載為 App
-pwa_js = """
-<script>
-let deferredPrompt;
-window.addEventListener('beforeinstallprompt', (e) => {
-    // 預防 Chrome 67 之前的自動跳出提示
-    e.preventDefault();
-    deferredPrompt = e;
-    // 建立一個提示按鈕或直接通知
-    console.log('PWA App 準備就緒，可以下載安裝！');
-});
-</script>
-"""
-components.html(pwa_js, height=0) # 讓這段網頁代碼在背景默默執行
-
-# 接下來是你原本的程式碼...
-# ==========================================
-# 🔌 1. 雲端資料庫連線設定
-# ==========================================
-SUPABASE_URL = "https://xjsmwrywbcqyoheoagkk.supabase.co"
-# ...後面依此類推
-
 # ==========================================
 # 🔌 1. 雲端資料庫連線設定
 # ==========================================
