@@ -4,8 +4,10 @@ from supabase import create_client, Client
 import hashlib
 from datetime import datetime, date
 import streamlit.components.v1 as components
+import urllib.request
+import json
 
-# 💡 安全引入 yfinance，若在雲端則依賴 requirements.txt
+# 💡 安全引入 yfinance
 try:
     import yfinance as yf
 except ImportError:
@@ -48,31 +50,45 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def get_current_price(symbol: str):
-    """輸入 2330 或 0050，升級版自動識別上市/上櫃並精準爬取 Yahoo Finance 報價"""
-    if yf is None:
-        return None
-    
+    """
+    輸入 2330 或 0050，雙重備援機制。
+    第一軌：Yahoo 原生 Web API 直爬（雲端最不易被封鎖）
+    第二軌：yfinance 模組
+    """
     symbol = symbol.strip()
     
-    # 如果是全數字，優先嘗試上市 (.TW) 與上櫃 (.TWO) 兩種後綴
+    # 格式標準化：純數字加上台灣後綴
     if symbol.isdigit():
-        suffixes = [f"{symbol}.TW", f"{symbol}.TWO"]
+        lookups = [f"{symbol}.TW", f"{symbol}.TWO"]
     else:
-        suffixes = [symbol]
-        
-    for lookup_symbol in suffixes:
+        lookups = [symbol]
+
+    for ticker_str in lookups:
+        # ---- 【第一軌】Yahoo 原生 Web JSON API 直接抓取（Streamlit 雲端環境極力推薦） ----
         try:
-            ticker = yf.Ticker(lookup_symbol)
-            # 💡 核心修正：改用 period="2d" 確保在假日或非開盤時間也能拿到最近一個交易日的正確收盤價
-            todays_data = ticker.history(period="2d")
-            if not todays_data.empty:
-                # 拿最後一筆有效的收盤價
-                latest_price = float(todays_data['Close'].iloc[-1])
-                if latest_price > 0:
-                    return latest_price
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_str}?interval=1d&range=2d"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                meta = data['chart']['result'][0]['meta']
+                price = meta.get('regularMarketPrice')
+                if price and float(price) > 0:
+                    return float(price)
         except:
-            continue
-            
+            pass
+
+        # ---- 【第二軌】常規 yfinance 函式庫備援 ----
+        if yf is not None:
+            try:
+                ticker = yf.Ticker(ticker_str)
+                todays_data = ticker.history(period="2d")
+                if not todays_data.empty:
+                    latest_price = float(todays_data['Close'].iloc[-1])
+                    if latest_price > 0:
+                        return latest_price
+            except:
+                continue
+                
     return None
 
 # ==========================================
@@ -360,17 +376,20 @@ else:
                 live_market_values = []
                 live_profits = []
                 
-                with st.spinner("🔄 正在連線台灣證券交易所獲取最新報價..."):
+                with st.spinner("🔄 正在連線交易所獲取最新報價..."):
                     for index, row in df_unreal.iterrows():
                         stock_id = row["asset_name"]
                         current_mkt_price = get_current_price(stock_id)
                         
                         buy_price = float(row["cost"])
+                        # 這裡的實際投入本金不應該被動態複寫死
+                        # 如果需要依市價計算最新總市值，股數 = 投入本金 / 買入單價
                         inserted_cash = float(row["actual_cash"])
                         
                         # 💡 如果成功獲取到市價
                         if current_mkt_price is not None and buy_price > 0:
-                            current_value = inserted_cash * (current_mkt_price / buy_price)
+                            shares = inserted_cash / buy_price
+                            current_value = shares * current_mkt_price
                             profit = current_value - inserted_cash
                         else:
                             current_mkt_price = buy_price
@@ -380,9 +399,6 @@ else:
                         live_prices.append(f"{current_mkt_price:,.2f} 元")
                         live_market_values.append(current_value)
                         live_profits.append(profit)
-                        
-                        # 同步將計算出的最新市值動態覆寫資料庫，保持大盤同步
-                        supabase.table("portfolio").update({"actual_cash": current_value}).eq("id", row["id"]).execute()
                 
                 df_unreal["交易所當前市價"] = live_prices
                 df_unreal["當前最新總市值"] = live_market_values
