@@ -7,7 +7,12 @@ import streamlit.components.v1 as components
 import urllib.request
 import json
 
-# 💡 安全引入 yfinance
+# 💡 安全引入自動刷新與 yfinance
+try:
+    from streamlit_autorefresh import st_autorefresh
+except ImportError:
+    st_autorefresh = None
+
 try:
     import yfinance as yf
 except ImportError:
@@ -17,7 +22,26 @@ except ImportError:
 st.set_page_config(page_title="全方位資產與投資管理系統", page_icon="💰", layout="wide")
 
 # ==========================================
-# 📱 0. PWA 行動裝置 / 電腦 App 下載功能注入
+# ⏱️ 自動刷新機制設定 (每 30 秒畫面自動跳動更新市價)
+# ==========================================
+if st_autorefresh is not None:
+    # 每 30000 毫秒 (30秒) 自動刷新一次，key 用來鎖定元件
+    st_autorefresh(interval=30000, limit=1000, key="stock_market_refresh")
+else:
+    # 如果雲端沒裝到套件，用前端 JS 輕量化每 30 秒自動刷新做備援
+    components.html(
+        """
+        <script>
+        setTimeout(function(){
+            window.parent.postMessage({type: 'streamlit:rerun'}, '*');
+        }, 30000);
+        </script>
+        """,
+        height=0
+    )
+
+# ==========================================
+# 📱 PWA 行動裝置 / 電腦 App 下載功能注入
 # ==========================================
 pwa_js = """
 <script>
@@ -64,7 +88,7 @@ def get_current_price(symbol: str):
         lookups = [symbol]
 
     for ticker_str in lookups:
-        # ---- 【第一軌】Yahoo 原生 Web JSON API 直接抓取（Streamlit 雲端環境極力推薦） ----
+        # ---- 【第一軌】Yahoo 原生 Web JSON API 直接抓取 ----
         try:
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_str}?interval=1d&range=2d"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -113,6 +137,7 @@ if not st.session_state.logged_in:
         if st.button("立即登入", type="primary", use_container_width=True):
             if login_user and login_pwd:
                 try:
+                    # 💡 修正對照：明確指向 users 資料表，解決 image_a70c3e 錯誤
                     response = supabase.table("users").select("*").eq("username", login_user).execute()
                     if response.data:
                         user_record = response.data[0]
@@ -124,7 +149,7 @@ if not st.session_state.logged_in:
                         else: st.error("❌ 密碼錯誤")
                     else: st.error("❌ 找不到帳號，請確認拼字或先前往註冊。")
                 except Exception as ex: st.error(f"資料庫錯誤: {ex}")
-            else: st.warning("⚠️ 請填寫完整帳號與密碼。")
+            else: ph = st.warning("⚠️ 請填寫完整帳號與密碼。")
                 
     with tab2:
         reg_user = st.text_input("設定新帳號", key="reg_user")
@@ -150,6 +175,10 @@ if not st.session_state.logged_in:
 else:
     current_user = st.session_state.username
     st.sidebar.title(f"👤 會員：{current_user}")
+    
+    # 在側邊欄顯示倒數與自動跳動提示
+    st.sidebar.caption("🔄 系統已啟動交易所連動，每 30 秒自動更新即時行情")
+    
     module = st.sidebar.radio(
         "🗂️ 核心功能選單",
         ["🏠 總資產智慧管理大盤", "1. 📝 日常記帳 (動態連動)", "2. 🏦 資產帳戶維護", "3. 📈 投資組合 (交易所即時連動)"]
@@ -194,13 +223,23 @@ else:
             df_unreal = df_pf[df_pf["status"] == "未實現"].copy()
             if not df_unreal.empty:
                 for idx, row in df_unreal.iterrows():
-                    invest_sum += float(row["actual_cash"])
+                    # 動態抓取最新價格計算最新總市值
+                    stock_id = row["asset_name"]
+                    current_mkt_price = get_current_price(stock_id)
+                    buy_price = float(row["cost"])
+                    inserted_cash = float(row["actual_cash"])
+                    
+                    if current_mkt_price is not None and buy_price > 0:
+                        shares = inserted_cash / buy_price
+                        invest_sum += (shares * current_mkt_price)
+                    else:
+                        invest_sum += inserted_cash
         
         net_worth = cash_sum + invest_sum
         
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("💵 可用現金餘額", f"{cash_sum:,.0f} 元")
-        m2.metric("📊 投資總市值 (交易所連動)", f"{invest_sum:,.0f} 元")
+        m2.metric("📊 投資總市值 (30s自動跳動)", f"{invest_sum:,.0f} 元")
         m3.metric("🚨 總貸款債務", "0 元")
         m4.metric("👑 個人淨資產 (Net Worth)", f"{net_worth:,.0f} 元")
         
@@ -209,14 +248,13 @@ else:
         if net_worth == 0:
             st.info("歡迎使用本系統！請先前往「2. 🏦 資產帳戶維護」建立您的第一個資產帳戶。")
         else:
-            st.success("✅ 您的投資部位與現金比例相當優異，系統已成功與交易所行情掛鉤連動！")
+            st.success("✅ 您的投資部位與現金比例相當優異，系統已成功啟用背景自動刷新重整行情！")
 
     # ---------------------------------------------------------
     # 模組 1：📝 日常記帳
     # ---------------------------------------------------------
     elif module == "1. 📝 日常記帳 (動態連動)":
         st.title("📝 隨手日常記帳中心")
-        st.write("在此記帳會**自動同步增減**您的資產帳戶餘額（僅限日常收支，投資會於專屬中心獨立處理）。")
         
         if not asset_list:
             st.warning("⚠️ 您目前沒有任何資產帳戶，請先前往「2. 🏦 資產帳戶維護」建立帳戶！")
@@ -349,7 +387,7 @@ else:
                             "type": "買入", "cost": inv_price, "actual_cash": total_cash_flow, "status": "未實現"
                         }).execute()
                         supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資轉換", "asset_name": inv_asset_link, "category": "證券買入", "amount": total_cash_flow, "note": f"購入庫存 {inv_name} {inv_qty}股，成本 {inv_price}"}).execute()
-                        st.success(f"🎉 成功買入 {inv_name}，共 {total_cash_flow:,.0f} 元（已從日常支出中排除）！")
+                        st.success(f"🎉 成功買入 {inv_name}，共 {total_cash_flow:,.0f} 元！")
                     
                     elif inv_type == "賣出":
                         unrealized_res = supabase.table("portfolio").select("*").eq("username", current_user).eq("asset_name", inv_name).eq("status", "未實現").execute()
@@ -364,7 +402,7 @@ else:
                     st.rerun()
 
         st.divider()
-        st.subheader("💼 交易所即時連動大盤庫存")
+        st.subheader("💼 交易所即時連動大盤庫存 (每 30 秒自動跳動更新)")
         p_col1, p_col2 = st.columns(2)
         
         with p_col1:
@@ -376,29 +414,25 @@ else:
                 live_market_values = []
                 live_profits = []
                 
-                with st.spinner("🔄 正在連線交易所獲取最新報價..."):
-                    for index, row in df_unreal.iterrows():
-                        stock_id = row["asset_name"]
-                        current_mkt_price = get_current_price(stock_id)
+                for index, row in df_unreal.iterrows():
+                    stock_id = row["asset_name"]
+                    current_mkt_price = get_current_price(stock_id)
+                    
+                    buy_price = float(row["cost"])
+                    inserted_cash = float(row["actual_cash"])
+                    
+                    if current_mkt_price is not None and buy_price > 0:
+                        shares = inserted_cash / buy_price
+                        current_value = shares * current_mkt_price
+                        profit = current_value - inserted_cash
+                    else:
+                        current_mkt_price = buy_price
+                        current_value = inserted_cash
+                        profit = 0.0
                         
-                        buy_price = float(row["cost"])
-                        # 這裡的實際投入本金不應該被動態複寫死
-                        # 如果需要依市價計算最新總市值，股數 = 投入本金 / 買入單價
-                        inserted_cash = float(row["actual_cash"])
-                        
-                        # 💡 如果成功獲取到市價
-                        if current_mkt_price is not None and buy_price > 0:
-                            shares = inserted_cash / buy_price
-                            current_value = shares * current_mkt_price
-                            profit = current_value - inserted_cash
-                        else:
-                            current_mkt_price = buy_price
-                            current_value = inserted_cash
-                            profit = 0.0
-                            
-                        live_prices.append(f"{current_mkt_price:,.2f} 元")
-                        live_market_values.append(current_value)
-                        live_profits.append(profit)
+                    live_prices.append(f"{current_mkt_price:,.2f} 元")
+                    live_market_values.append(current_value)
+                    live_profits.append(profit)
                 
                 df_unreal["交易所當前市價"] = live_prices
                 df_unreal["當前最新總市值"] = live_market_values
