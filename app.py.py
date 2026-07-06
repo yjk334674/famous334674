@@ -310,13 +310,19 @@ else:
     elif module == "2. 🏦 資產帳戶與多類別維護":
         st.title("🏦 資產帳戶維護與多維度報表")
         
+        # 💡 防止數值殘留的核心防護機制：若 session_state 中沒有此 key 則初始化為 0
+        if "init_balance_input" not in st.session_state:
+            st.session_state.init_balance_input = 0
+            
         # A. 新增資產帳戶區
         st.subheader("➕ 建立新資產帳戶（支援多種類別）")
-        with st.form("new_asset_categorical"):
+        with st.form("new_asset_categorical", clear_on_submit=True):
             col_a, col_b, col_c = st.columns(3)
             asset_class = col_a.selectbox("選擇資產類別", ["現金口袋", "活期存款", "數位帳戶", "定期存款", "外幣資產", "虛擬貨幣", "實體資產(機車/汽車)", "其他資產"])
             custom_name = col_b.text_input("輸入帳戶/資產名稱 (如: 第一銀行、台新 Richart、幣安)")
-            init_balance = col_c.number_input("初始餘額 / 價值 (元)", min_value=0, value=0)
+            
+            # 💡 綁定專屬的 key
+            init_balance = col_c.number_input("初始餘額 / 價值 (元)", min_value=0, key="init_balance_input")
             
             if st.form_submit_button("💾 立即新增此資產帳戶"):
                 if custom_name:
@@ -326,6 +332,9 @@ else:
                     else:
                         supabase.table("own_assets").insert({"username": current_user, "asset_name": combined_name, "amount": init_balance}).execute()
                         supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "收入", "asset_name": combined_name, "category": "帳戶初始化", "amount": init_balance, "note": f"開戶全新多類別資產：{asset_class}"}).execute()
+                        
+                        # 💡 成功新增後，強制將輸入框的快取數據重置清空
+                        st.session_state.init_balance_input = 0
                         st.success(f"🎉 成功建立 [{asset_class}] {custom_name} 帳戶！")
                         st.rerun()
                 else:
@@ -365,12 +374,10 @@ else:
                 st.success("⚙️ 帳戶資訊與餘額更新完畢！")
                 st.rerun()
                 
-            # 💡 【新增】刪除資產帳戶按鈕與安全防護機制
+            # 刪除資產帳戶按鈕
             if btn_col2.button("🗑️ 徹底刪除此資產帳戶", use_container_width=True, type="secondary"):
                 try:
-                    # 1. 從 own_assets 移出該資產
                     supabase.table("own_assets").delete().eq("username", current_user).eq("asset_name", target_asset).execute()
-                    # 2. 一併清除關聯的交易紀錄以防破圖
                     supabase.table("transactions").delete().eq("username", current_user).eq("asset_name", target_asset).execute()
                     st.success(f"💥 已成功將帳戶「{target_asset}」及其關聯記帳明細完整移除！")
                     st.rerun()
