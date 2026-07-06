@@ -1,21 +1,15 @@
-import os
-import sys
-
-# 🚀 自動檢測並安裝 yfinance 的防呆機制
-try:
-    import yfinance as yf
-except ImportError:
-    import subprocess
-    # 自動調用當前環境的 pip 進行背景安裝
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "yfinance"])
-    import yfinance as yf
-
 import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
 import hashlib
 from datetime import datetime, date
 import streamlit.components.v1 as components
+
+# 💡 安全引入 yfinance，若在雲端則依賴 requirements.txt，不使用強制 subprocess
+try:
+    import yfinance as yf
+except ImportError:
+    yf = None
 
 # 設定網頁
 st.set_page_config(page_title="全方位資產與投資管理系統", page_icon="💰", layout="wide")
@@ -55,6 +49,8 @@ def hash_password(password):
 
 def get_current_price(symbol: str):
     """輸入 2330 或 0050，自動轉換並抓取 Yahoo Finance 最新市價"""
+    if yf is None:
+        return None
     symbol = symbol.strip()
     if symbol.isdigit():
         lookup_symbol = f"{symbol}.TW"
@@ -92,6 +88,7 @@ if not st.session_state.logged_in:
         if st.button("立即登入", type="primary", use_container_width=True):
             if login_user and login_pwd:
                 try:
+                    # 💡 修正修正：改回正確的複數資料表 "users"
                     response = supabase.table("users").select("*").eq("username", login_user).execute()
                     if response.data:
                         user_record = response.data[0]
@@ -335,6 +332,7 @@ else:
                         if unrealized_res.data:
                             target_stock = unrealized_res.data[0]
                             supabase.table("own_assets").update({"amount": curr_asset_amt + total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
+                            # 💡 賣出時將狀態變更為「已實現」
                             supabase.table("portfolio").update({"type": "賣出", "cost": inv_price, "actual_cash": total_cash_flow, "status": "已實現"}).eq("id", target_stock["id"]).execute()
                             supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資結算", "asset_name": inv_asset_link, "category": "證券賣出", "amount": total_cash_flow, "note": f"賣出庫存 {inv_name}，實收 {total_cash_flow}"}).execute()
                             st.success(f"🎉 成功賣出 {inv_name}，結算金額 {total_cash_flow:,.0f} 元！")
@@ -375,6 +373,7 @@ else:
                         live_market_values.append(current_value)
                         live_profits.append(profit)
                         
+                        # 💡 同步將計算出的最新市值動態覆寫資料庫，保持大盤同步
                         supabase.table("portfolio").update({"actual_cash": current_value}).eq("id", row["id"]).execute()
                 
                 df_unreal["交易所當前市價"] = live_prices
