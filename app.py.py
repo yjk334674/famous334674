@@ -39,20 +39,6 @@ else:
     )
 
 # ==========================================
-# 📱 PWA 行動裝置 / 電腦 App 下載功能注入
-# ==========================================
-pwa_js = """
-<script>
-let deferredPrompt;
-window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-});
-</script>
-"""
-components.html(pwa_js, height=0)
-
-# ==========================================
 # 🔌 1. 雲端資料庫連線設定
 # ==========================================
 SUPABASE_URL = "https://xjsmwrywbcqyoheoagkk.supabase.co"
@@ -124,6 +110,7 @@ if not st.session_state.logged_in:
         if st.button("立即登入", type="primary", use_container_width=True):
             if login_user and login_pwd:
                 try:
+                    # 💡 修正對應到正確的 'users' 資料表
                     response = supabase.table("users").select("*").eq("username", login_user).execute()
                     if response.data:
                         user_record = response.data[0]
@@ -218,7 +205,6 @@ else:
     # ---------------------------------------------------------
     if module == "🏠 總資產智慧管理大盤":
         st.title("💰 總資產智慧管理大盤")
-        st.write("實時匯總您的各類別現金、數位帳戶、虛擬貨幣與股票投資市值。")
         
         cash_sum = sum(float(x["amount"]) for x in raw_assets)
         invest_sum = 0.0
@@ -305,23 +291,16 @@ else:
                     st.info("💡 今天還沒有常規消費記帳明細喔！")
 
     # ---------------------------------------------------------
-    # 模組 2：🏦 資產帳戶維護與多類別管理 (新增、更新與刪除)
+    # 模組 2：🏦 資產帳戶維護與多類別管理
     # ---------------------------------------------------------
     elif module == "2. 🏦 資產帳戶與多類別維護":
         st.title("🏦 資產帳戶維護與多維度報表")
         
-        # 💡 防止數值殘留的核心防護機制：若 session_state 中沒有此 key 則初始化為 0
-        if "init_balance_input" not in st.session_state:
-            st.session_state.init_balance_input = 0
-            
-        # A. 新增資產帳戶區
         st.subheader("➕ 建立新資產帳戶（支援多種類別）")
         with st.form("new_asset_categorical", clear_on_submit=True):
             col_a, col_b, col_c = st.columns(3)
             asset_class = col_a.selectbox("選擇資產類別", ["現金口袋", "活期存款", "數位帳戶", "定期存款", "外幣資產", "虛擬貨幣", "實體資產(機車/汽車)", "其他資產"])
             custom_name = col_b.text_input("輸入帳戶/資產名稱 (如: 第一銀行、台新 Richart、幣安)")
-            
-            # 💡 綁定專屬的 key
             init_balance = col_c.number_input("初始餘額 / 價值 (元)", min_value=0, key="init_balance_input")
             
             if st.form_submit_button("💾 立即新增此資產帳戶"):
@@ -333,8 +312,6 @@ else:
                         supabase.table("own_assets").insert({"username": current_user, "asset_name": combined_name, "amount": init_balance}).execute()
                         supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "收入", "asset_name": combined_name, "category": "帳戶初始化", "amount": init_balance, "note": f"開戶全新多類別資產：{asset_class}"}).execute()
                         
-                        # 💡 成功新增後，強制將輸入框的快取數據重置清空
-                        st.session_state.init_balance_input = 0
                         st.success(f"🎉 成功建立 [{asset_class}] {custom_name} 帳戶！")
                         st.rerun()
                 else:
@@ -345,10 +322,7 @@ else:
         if not df_assets_parsed.empty:
             st.dataframe(df_assets_parsed[["資產類別", "帳戶名稱", "餘額 (元)"]], use_container_width=True)
             
-            # B. 編輯與刪除資產控制台
             st.write("🔧 **帳戶進階設定管理 (編輯名稱、調整餘額、刪除帳戶)**")
-            
-            # 選擇目標帳戶
             target_asset = st.selectbox("選擇要處理的帳戶", options=df_assets_parsed["id_key"].tolist(), format_func=lambda x: x.replace("[", "").replace("]", " -> "), key="asset_manager_select")
             current_row = df_assets_parsed[df_assets_parsed["id_key"] == target_asset].iloc[0]
             
@@ -358,7 +332,6 @@ else:
             
             btn_col1, btn_col2 = st.columns([1, 1])
             
-            # 儲存更新按鈕
             if btn_col1.button("💾 儲存變更設定", use_container_width=True, type="primary"):
                 old_balance = float(current_row["餘額 (元)"])
                 fixed_combined_name = f"[{current_row['資產類別']}]{new_name}"
@@ -374,7 +347,6 @@ else:
                 st.success("⚙️ 帳戶資訊與餘額更新完畢！")
                 st.rerun()
                 
-            # 刪除資產帳戶按鈕
             if btn_col2.button("🗑️ 徹底刪除此資產帳戶", use_container_width=True, type="secondary"):
                 try:
                     supabase.table("own_assets").delete().eq("username", current_user).eq("asset_name", target_asset).execute()
@@ -422,6 +394,7 @@ else:
                         if unrealized_res.data:
                             target_stock = unrealized_res.data[0]
                             supabase.table("own_assets").update({"amount": curr_asset_amt + total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
+                            # 💡 賣出時將該筆資料的狀態轉為已實現
                             supabase.table("portfolio").update({"type": "賣出", "cost": inv_price, "actual_cash": total_cash_flow, "status": "已實現"}).eq("id", target_stock["id"]).execute()
                             supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資結算", "asset_name": inv_asset_link, "category": "證券賣出", "amount": total_cash_flow, "note": f"賣出庫存 {inv_name}，實收 {total_cash_flow}"}).execute()
                             st.success(f"🎉 成功賣出 {inv_name}！")
