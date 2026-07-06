@@ -5,7 +5,7 @@ import hashlib
 from datetime import datetime, date
 import streamlit.components.v1 as components
 
-# 💡 安全引入 yfinance，若在雲端則依賴 requirements.txt，不使用強制 subprocess
+# 💡 安全引入 yfinance，若在雲端則依賴 requirements.txt
 try:
     import yfinance as yf
 except ImportError:
@@ -48,22 +48,31 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def get_current_price(symbol: str):
-    """輸入 2330 或 0050，自動轉換並抓取 Yahoo Finance 最新市價"""
+    """輸入 2330 或 0050，升級版自動識別上市/上櫃並精準爬取 Yahoo Finance 報價"""
     if yf is None:
         return None
+    
     symbol = symbol.strip()
+    
+    # 如果是全數字，優先嘗試上市 (.TW) 與上櫃 (.TWO) 兩種後綴
     if symbol.isdigit():
-        lookup_symbol = f"{symbol}.TW"
+        suffixes = [f"{symbol}.TW", f"{symbol}.TWO"]
     else:
-        lookup_symbol = symbol
+        suffixes = [symbol]
         
-    try:
-        ticker = yf.Ticker(lookup_symbol)
-        todays_data = ticker.history(period="1d")
-        if not todays_data.empty:
-            return float(todays_data['Close'].iloc[-1])
-    except:
-        pass
+    for lookup_symbol in suffixes:
+        try:
+            ticker = yf.Ticker(lookup_symbol)
+            # 💡 核心修正：改用 period="2d" 確保在假日或非開盤時間也能拿到最近一個交易日的正確收盤價
+            todays_data = ticker.history(period="2d")
+            if not todays_data.empty:
+                # 拿最後一筆有效的收盤價
+                latest_price = float(todays_data['Close'].iloc[-1])
+                if latest_price > 0:
+                    return latest_price
+        except:
+            continue
+            
     return None
 
 # ==========================================
@@ -88,7 +97,6 @@ if not st.session_state.logged_in:
         if st.button("立即登入", type="primary", use_container_width=True):
             if login_user and login_pwd:
                 try:
-                    # 💡 修正修正：改回正確的複數資料表 "users"
                     response = supabase.table("users").select("*").eq("username", login_user).execute()
                     if response.data:
                         user_record = response.data[0]
@@ -332,7 +340,6 @@ else:
                         if unrealized_res.data:
                             target_stock = unrealized_res.data[0]
                             supabase.table("own_assets").update({"amount": curr_asset_amt + total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
-                            # 💡 賣出時將狀態變更為「已實現」
                             supabase.table("portfolio").update({"type": "賣出", "cost": inv_price, "actual_cash": total_cash_flow, "status": "已實現"}).eq("id", target_stock["id"]).execute()
                             supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資結算", "asset_name": inv_asset_link, "category": "證券賣出", "amount": total_cash_flow, "note": f"賣出庫存 {inv_name}，實收 {total_cash_flow}"}).execute()
                             st.success(f"🎉 成功賣出 {inv_name}，結算金額 {total_cash_flow:,.0f} 元！")
@@ -361,6 +368,7 @@ else:
                         buy_price = float(row["cost"])
                         inserted_cash = float(row["actual_cash"])
                         
+                        # 💡 如果成功獲取到市價
                         if current_mkt_price is not None and buy_price > 0:
                             current_value = inserted_cash * (current_mkt_price / buy_price)
                             profit = current_value - inserted_cash
@@ -373,7 +381,7 @@ else:
                         live_market_values.append(current_value)
                         live_profits.append(profit)
                         
-                        # 💡 同步將計算出的最新市值動態覆寫資料庫，保持大盤同步
+                        # 同步將計算出的最新市值動態覆寫資料庫，保持大盤同步
                         supabase.table("portfolio").update({"actual_cash": current_value}).eq("id", row["id"]).execute()
                 
                 df_unreal["交易所當前市價"] = live_prices
