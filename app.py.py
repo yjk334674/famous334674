@@ -22,7 +22,7 @@ except ImportError:
 st.set_page_config(page_title="全方位資產與投資管理系統", page_icon="💰", layout="wide")
 
 # ==========================================
-# ⏱️ 自動刷新機制設定 (每 30 秒畫面自動跳動更新市價)
+# ⏱️ 自動刷新機制設定 (每 30 秒畫面自動跳動更新市價與匯率)
 # ==========================================
 if st_autorefresh is not None:
     st_autorefresh(interval=30000, limit=1000, key="stock_market_refresh")
@@ -56,12 +56,14 @@ except Exception as e:
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
+# 抓取即時價格的通用函式
 def get_current_price(symbol: str):
     symbol = symbol.strip()
+    # 如果是純數字，代表是台股，嘗試後綴
     if symbol.isdigit():
         lookups = [f"{symbol}.TW", f"{symbol}.TWO"]
     else:
-        lookups = [symbol]
+        lookups = [symbol] # 美股代號如 AAPL, TSLA 直接查詢
 
     for ticker_str in lookups:
         try:
@@ -87,6 +89,30 @@ def get_current_price(symbol: str):
             except:
                 continue
     return None
+
+# 🌟 新增：抓取即時美金對新台幣匯率 (USDTWD=X)
+def get_usd_to_twd_rate():
+    try:
+        url = "https://query1.finance.yahoo.com/v8/finance/chart/USDTWD=X?interval=1d&range=2d"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            meta = data['chart']['result'][0]['meta']
+            rate = meta.get('regularMarketPrice')
+            if rate and float(rate) > 0:
+                return float(rate)
+    except:
+        pass
+    
+    if yf is not None:
+        try:
+            ticker = yf.Ticker("USDTWD=X")
+            todays_data = ticker.history(period="2d")
+            if not todays_data.empty:
+                return float(todays_data['Close'].iloc[-1])
+        except:
+            pass
+    return 32.5 # 萬一網路都失敗的保底備用匯率
 
 # ==========================================
 # 👤 2. 會員登入狀態管理
@@ -147,7 +173,11 @@ if not st.session_state.logged_in:
 else:
     current_user = st.session_state.username
     st.sidebar.title(f"👤 會員：{current_user}")
-    st.sidebar.caption("🔄 系統已啟動交易所連動，每 30 秒自動更新即時行情")
+    
+    # 獲取當前即時匯率並顯示在側邊欄
+    usd_twd_rate = get_usd_to_twd_rate()
+    st.sidebar.metric("💵 當前即時美金匯率 (連網)", f"{usd_twd_rate:.2f} TWD")
+    st.sidebar.caption("🔄 系統已啟動交易所連動，每 30 秒自動更新即時行情與匯率")
     
     module = st.sidebar.radio(
         "🗂️ 核心功能選單",
@@ -168,7 +198,6 @@ else:
         st.stop()
 
     asset_list = [x["asset_name"] for x in assets_res.data] if assets_res.data else []
-    
     raw_assets = assets_res.data if assets_res.data else []
     parsed_assets = []
     for a in raw_assets:
@@ -206,28 +235,33 @@ else:
         st.title("💰 總資產智慧管理大盤")
         
         cash_sum = sum(float(x["amount"]) for x in raw_assets)
-        invest_sum = 0.0
+        invest_sum_twd = 0.0 # 改為台幣加總計價
         
         if not df_pf.empty:
             df_unreal = df_pf[df_pf["status"] == "未實現"].copy()
             if not df_unreal.empty:
                 for idx, row in df_unreal.iterrows():
-                    stock_id = row["asset_name"]
+                    stock_id = row["asset_name"].strip()
                     current_mkt_price = get_current_price(stock_id)
                     buy_price = float(row["cost"])
                     inserted_cash = float(row["actual_cash"])
                     
+                    # 判斷是否為美股
+                    is_us_stock = not stock_id.isdigit()
+                    multiplier = usd_twd_rate if is_us_stock else 1.0
+                    
                     if current_mkt_price is not None and buy_price > 0:
                         shares = inserted_cash / buy_price
-                        invest_sum += (shares * current_mkt_price)
+                        current_value = shares * current_mkt_price
+                        invest_sum_twd += (current_value * multiplier)
                     else:
-                        invest_sum += inserted_cash
+                        invest_sum_twd += (inserted_cash * multiplier)
         
-        net_worth = cash_sum + invest_sum
+        net_worth = cash_sum + invest_sum_twd
         
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("💵 總帳戶餘額 (含各類資產)", f"{cash_sum:,.0f} 元")
-        m2.metric("📊 投資總市值 (30s自動跳動)", f"{invest_sum:,.0f} 元")
+        m2.metric("📊 投資總市值 (台美股折合新台幣)", f"{invest_sum_twd:,.0f} 元")
         m3.metric("🚨 總貸款債務", "0 元")
         m4.metric("👑 個人淨資產 (Net Worth)", f"{net_worth:,.0f} 元")
         
@@ -235,8 +269,8 @@ else:
         st.subheader("📊 多元資產類別分佈比例")
         if not df_assets_parsed.empty:
             df_summary = df_assets_parsed.groupby("資產類別")["餘額 (元)"].sum().reset_index()
-            if invest_sum > 0:
-                df_summary = pd.concat([df_summary, pd.DataFrame([{"資產類別": "證券投資 (台美股)", "餘額 (元)": invest_sum}])], ignore_index=True)
+            if invest_sum_twd > 0:
+                df_summary = pd.concat([df_summary, pd.DataFrame([{"資產類別": "證券投資 (台美股加總)", "餘額 (元)": invest_sum_twd}])], ignore_index=True)
             
             df_summary["所佔比例"] = df_summary["餘額 (元)"].apply(lambda x: f"{(x / net_worth * 100):.1f} %" if net_worth > 0 else "0%")
             st.table(df_summary.rename(columns={"餘額 (元)": "總金額 (元)"}))
@@ -290,7 +324,7 @@ else:
                     st.info("💡 今天還沒有常規消費記帳明細喔！")
 
     # ---------------------------------------------------------
-    # 模組 2：🏦 資產帳戶維護與多類別管理
+    # 模組 2：🏦 資產帳戶維護
     # ---------------------------------------------------------
     elif module == "2. 🏦 資產帳戶與多類別維護":
         st.title("🏦 資產帳戶維護與多維度報表")
@@ -302,7 +336,7 @@ else:
             with st.form("new_asset_categorical", clear_on_submit=True):
                 col_a, col_b, col_c = st.columns(3)
                 asset_class = col_a.selectbox("選擇資產類別", ["現金口袋", "活期存款", "數位帳戶", "定期存款", "外幣資產", "虛擬貨幣", "實體資產(機車/汽車)", "其他資產"])
-                custom_name = col_b.text_input("輸入帳戶/資產名稱 (如: 第一銀行、台新 Richart、幣安)")
+                custom_name = col_b.text_input("輸入帳戶/資產名稱 (如: 第一銀行、台新 Richart、美金現鈔)")
                 init_balance = col_c.number_input("初始餘額 / 價值 (元)", min_value=0, value=0)
                 
                 submit_btn = st.form_submit_button("💾 立即新增此資產帳戶", use_container_width=True, type="primary")
@@ -393,11 +427,11 @@ else:
             st.info("💡 目前尚未建立任何資產帳戶，請使用上方表單建立一個吧！")
 
     # ---------------------------------------------------------
-    # 模組 3：📈 投資組合 (已整合 📥 歷史導入 與 🗑️ 庫存刪除功能)
+    # 模組 3：📈 投資組合 (整合 💱 匯率自動換算功能)
     # ---------------------------------------------------------
     elif module == "3. 📈 投資組合 (交易所即時連動)":
         st.title("📈 交易所即時連動投資組合")
-        st.info("💡 買入股票屬於資產型態轉換（現金變股票），本系統已將其與日常消費支出完全獨立分開。")
+        st.info(f"💡 買入股票屬於資產型態轉換。當前聯網即時美金匯率： **{usd_twd_rate:.2f}** TWD。系統會自動偵測美金股票代號並即時換算。")
         
         tab_inv1, tab_inv2 = st.tabs(["🛒 常規日常交易下單", "📥 導入系統前舊投資持股"])
         
@@ -407,8 +441,8 @@ else:
                 col_i1, col_i2, col_i3, col_i4, col_i5 = st.columns(5)
                 inv_date = col_i1.date_input("交易日期", value=date.today())
                 inv_type = col_i2.selectbox("交易方向", ["買入", "賣出"])
-                inv_name = col_i3.text_input("股票代號 (如: 2330, 0050)", key="stock_code_regular")
-                inv_price = col_i4.number_input("買入/賣出單價 (元)", min_value=0.1, value=100.0)
+                inv_name = col_i3.text_input("股票代號 (台股如: 2330 / 美股如: AAPL)", key="stock_code_regular")
+                inv_price = col_i4.number_input("買入/賣出單價 (原幣別價)", min_value=0.1, value=100.0)
                 inv_qty = col_i5.number_input("交易股數", min_value=1, value=1000)
                 inv_asset_link = st.selectbox("連動扣款/入款資產帳戶", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " -> "))
                 
@@ -420,31 +454,31 @@ else:
                         if inv_type == "買入":
                             supabase.table("own_assets").update({"amount": curr_asset_amt - total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
                             supabase.table("portfolio").insert({
-                                "username": current_user, "date": str(inv_date), "asset_name": inv_name.strip(),
+                                "username": current_user, "date": str(inv_date), "asset_name": inv_name.strip().upper(),
                                 "type": "買入", "cost": inv_price, "actual_cash": total_cash_flow, "status": "未實現"
                             }).execute()
-                            supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資轉換", "asset_name": inv_asset_link, "category": "證券買入", "amount": total_cash_flow, "note": f"購入庫存 {inv_name} {inv_qty}股，成本 {inv_price}"}).execute()
-                            st.success(f"🎉 成功買入 {inv_name}！")
+                            supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資轉換", "asset_name": inv_asset_link, "category": "證券買入", "amount": total_cash_flow, "note": f"購入庫存 {inv_name.upper()} {inv_qty}股，成本 {inv_price}"}).execute()
+                            st.success(f"🎉 成功買入 {inv_name.upper()}！")
                         
                         elif inv_type == "賣出":
-                            unrealized_res = supabase.table("portfolio").select("*").eq("username", current_user).eq("asset_name", inv_name.strip()).eq("status", "未實現").execute()
+                            unrealized_res = supabase.table("portfolio").select("*").eq("username", current_user).eq("asset_name", inv_name.strip().upper()).eq("status", "未實現").execute()
                             if unrealized_res.data:
                                 target_stock = unrealized_res.data[0]
                                 supabase.table("own_assets").update({"amount": curr_asset_amt + total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
                                 supabase.table("portfolio").update({"type": "賣出", "cost": inv_price, "actual_cash": total_cash_flow, "status": "已實現"}).eq("id", target_stock["id"]).execute()
-                                supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資結算", "asset_name": inv_asset_link, "category": "證券賣出", "amount": total_cash_flow, "note": f"賣出庫存 {inv_name}，實收 {total_cash_flow}"}).execute()
-                                st.success(f"🎉 成功賣出 {inv_name}！")
-                            else: st.error(f"❌ 錯誤：您目前並無 {inv_name} 的持股庫存！")
+                                supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資結算", "asset_name": inv_asset_link, "category": "證券賣出", "amount": total_cash_flow, "note": f"賣出庫存 {inv_name.upper()}，實收 {total_cash_flow}"}).execute()
+                                st.success(f"🎉 成功賣出 {inv_name.upper()}！")
+                            else: st.error(f"❌ 錯誤：您目前並無 {inv_name.upper()} 的持股庫存！")
                         st.rerun()
                         
         with tab_inv2:
             st.subheader("📥 導入使用系統前購入的歷史庫存")
-            st.caption("💡 此功能僅增加未實現庫存市值，**絕不扣除**任何帳戶金額。適合用來校正初始投資資料。")
+            st.caption("💡 此功能僅增加未實現庫存市值，**絕不扣除**任何帳戶金額。")
             with st.form("history_invest_form", clear_on_submit=True):
                 col_h1, col_h2, col_h3, col_h4 = st.columns(4)
                 hist_date = col_h1.date_input("當初購入日期", value=date.today())
-                hist_name = col_h2.text_input("股票代號 (如: 2330, 2454)", key="stock_code_history")
-                hist_price = col_h3.number_input("當初買入平均單價 (元)", min_value=0.1, value=100.0)
+                hist_name = col_h2.text_input("股票代號 (台股如: 2454 / 美股如: NVDA)", key="stock_code_history")
+                hist_price = col_h3.number_input("當初買入平均單價 (原幣別價)", min_value=0.1, value=100.0)
                 hist_qty = col_h4.number_input("持有股數", min_value=1, value=1000)
                 
                 if st.form_submit_button("📥 立即加入歷史庫存庫"):
@@ -452,37 +486,44 @@ else:
                         total_hist_cost = hist_price * hist_qty
                         try:
                             supabase.table("portfolio").insert({
-                                "username": current_user, "date": str(hist_date), "asset_name": hist_name.strip(),
+                                "username": current_user, "date": str(hist_date), "asset_name": hist_name.strip().upper(),
                                 "type": "買入", "cost": hist_price, "actual_cash": total_hist_cost, "status": "未實現"
                             }).execute()
                             supabase.table("transactions").insert({
                                 "username": current_user, "date": str(date.today()), "type": "收入", 
-                                "asset_name": "投資組合庫存", "category": "歷史庫存導入", "amount": total_hist_cost, "note": f"系統初始化：導入舊持有股票 {hist_name} 共 {hist_qty} 股"
+                                "asset_name": "投資組合庫存", "category": "歷史庫存導入", "amount": total_hist_cost, "note": f"系統初始化：導入舊持有股票 {hist_name.upper()} 共 {hist_qty} 股"
                             }).execute()
                             
-                            st.success(f"🎉 歷史庫存 {hist_name} 導入成功！已納入即時大盤計算。")
+                            st.success(f"🎉 歷史庫存 {hist_name.upper()} 導入成功！已納入即時大盤計算。")
                             st.rerun()
                         except Exception as ex: st.error(f"導入失敗: {ex}")
                     else: st.warning("⚠️ 請填寫股票代號。")
 
         st.divider()
-        st.subheader("💼 交易所即時連動大盤庫存 (每 30 秒自動跳動更新)")
+        st.subheader("💼 交易所即時連動大盤庫存 (美股已即時換算新台幣，每 30 秒自動更新)")
         p_col1, p_col2 = st.columns(2)
         
         df_unreal = df_pf[df_pf["status"] == "未實現"].copy() if not df_pf.empty else pd.DataFrame()
         
         with p_col1:
-            st.write("🔍 **未實現損益（即時聯網爬取最新市場價格）**")
+            st.write("🔍 **未實現損益（各幣別皆自動換算為新台幣呈現）**")
             if not df_unreal.empty:
-                live_prices = []
-                live_market_values = []
-                live_profits = []
+                display_currency = []
+                live_prices_twd = []
+                live_market_values_twd = []
+                live_profits_twd = []
+                cost_sum_twd = [] # 用來存換算成台幣後的本金
                 
                 for index, row in df_unreal.iterrows():
-                    stock_id = row["asset_name"]
+                    stock_id = row["asset_name"].strip()
                     current_mkt_price = get_current_price(stock_id)
                     buy_price = float(row["cost"])
                     inserted_cash = float(row["actual_cash"])
+                    
+                    # 判斷是否為美股 (英文代號則為美股)
+                    is_us_stock = not stock_id.isdigit()
+                    currency_tag = "USD" if is_us_stock else "TWD"
+                    multiplier = usd_twd_rate if is_us_stock else 1.0
                     
                     if current_mkt_price is not None and buy_price > 0:
                         shares = inserted_cash / buy_price
@@ -492,29 +533,35 @@ else:
                         current_mkt_price = buy_price
                         current_value = inserted_cash
                         profit = 0.0
-                        
-                    live_prices.append(f"{current_mkt_price:,.2f} 元")
-                    live_market_values.append(current_value)
-                    live_profits.append(profit)
+                    
+                    display_currency.append(currency_tag)
+                    # 全數乘上匯率乘數，轉為新台幣
+                    live_prices_twd.append(f"{current_mkt_price * multiplier:,.2f} 元")
+                    live_market_values_twd.append(current_value * multiplier)
+                    live_profits_twd.append(profit * multiplier)
+                    cost_sum_twd.append(inserted_cash * multiplier)
                 
-                df_unreal["交易所當前市價"] = live_prices
-                df_unreal["當前最新總市值"] = live_market_values
-                df_unreal["即時未實現損益"] = live_profits
+                df_unreal["計價幣別"] = display_currency
+                df_unreal["交易所當前市價(台幣)"] = live_prices_twd
+                df_unreal["當前最新總市值(台幣)"] = live_market_values_twd
+                df_unreal["即時未實現損益(台幣)"] = live_profits_twd
+                df_unreal["投入本金(台幣)"] = cost_sum_twd
                 
                 st.dataframe(
-                    df_unreal[["asset_name", "date", "cost", "actual_cash", "交易所當前市價", "當前最新總市值", "即時未實現損益"]]
-                    .rename(columns={"asset_name": "股票代號", "date": "購入日期", "cost": "買入單價", "actual_cash": "投入本金"}),
+                    df_unreal[["asset_name", "計價幣別", "date", "cost", "投入本金(台幣)", "交易所當前市價(台幣)", "當前最新總市值(台幣)", "即時未實現損益(台幣)"]]
+                    .rename(columns={"asset_name": "股票代號", "date": "購入日期", "cost": "買入單價(原幣)"}),
                     use_container_width=True
                 )
                 
-                unreal_cost_sum = df_unreal["actual_cash"].astype(float).sum()
-                unreal_market_sum = df_unreal["當前最新總市值"].sum()
-                unreal_profit_sum = unreal_market_sum - unreal_cost_sum
-                unreal_roi = (unreal_profit_sum / unreal_cost_sum * 100) if unreal_cost_sum > 0 else 0
+                # 計算台美股完美大加總
+                total_cost_twd_all = sum(cost_sum_twd)
+                total_market_twd_all = sum(live_market_values_twd)
+                total_profit_twd_all = total_market_twd_all - total_cost_twd_all
+                total_roi_all = (total_profit_twd_all / total_cost_twd_all * 100) if total_cost_twd_all > 0 else 0
                 
-                st.metric("📊 全庫存即時總損益", f"{unreal_profit_sum:,.0f} 元", f"即時報酬率：{unreal_roi:.2f} %")
+                st.metric("📊 台美全庫存即時總損益 (新台幣大加總)", f"{total_profit_twd_all:,.0f} 元", f"綜合即時總報酬率：{total_roi_all:.2f} %")
             else:
-                st.info("目前無未實現持股，請在上方輸入股票代號（例如：2330）建立您的投資組合。")
+                st.info("目前無未實現持股。")
 
         with p_col2:
             st.write("💰 **已實現損益（歷史平倉獲利結算）**")
@@ -522,35 +569,28 @@ else:
             if not df_real.empty:
                 df_real["cost"] = df_real["cost"].astype(float)
                 df_real["actual_cash"] = df_real["actual_cash"].astype(float)
-                st.dataframe(df_real[["date", "asset_name", "actual_cash"]].rename(columns={"date": "結算日期", "asset_name": "股票代號", "actual_cash": "賣出變現總額"}), use_container_width=True)
+                st.dataframe(df_real[["date", "asset_name", "actual_cash"]].rename(columns={"date": "結算日期", "asset_name": "股票代號", "actual_cash": "賣出變現總額(原幣)"}), use_container_width=True)
             else: 
                 st.info("目前尚無已實現的賣出獲利紀錄。")
 
-        # ---------------------------------------------------------
-        # 🗑️ 新增功能：庫存進階設定管理 (手動刪除錯誤庫存紀錄)
-        # ---------------------------------------------------------
+        # 庫存手動刪除進階功能
         if not df_unreal.empty:
             st.divider()
             st.subheader("🔧 庫存進階設定管理")
-            st.caption("🚨 注意：此功能用於手動剔除錯誤輸入的股票紀錄（非賣出平倉交易）。刪除庫存將不會退回或變更任何資產帳戶餘額。")
             
-            # 建立選取選單格式
             df_unreal["selector_label"] = df_unreal.apply(
-                lambda r: f"代號: {r['asset_name']} | 購入日: {r['date']} | 投入本金: {float(r['actual_cash']):,.0f}元", axis=1
+                lambda r: f"代號: {r['asset_name']} ({r['計價幣別']}) | 購入日: {r['date']} | 投入本金(台幣): {float(r['投入本金(台幣)']):,.0f}元", axis=1
             )
-            
             target_stock_label = st.selectbox("選擇要徹底刪除的持股庫存紀錄", options=df_unreal["selector_label"].tolist())
             
-            # 找出對應紀錄的 ID
             selected_row = df_unreal[df_unreal["selector_label"] == target_stock_label].iloc[0]
             target_id = selected_row["id"]
             target_code = selected_row["asset_name"]
             
             if st.button(f"🗑️ 徹底刪除代號 {target_code} 的這筆持股庫存", type="secondary", use_container_width=True):
                 try:
-                    # 自 portfolio 表中刪除對應的唯一 ID 庫存
                     supabase.table("portfolio").delete().eq("id", target_id).eq("username", current_user).execute()
                     st.success(f"💥 已成功將該筆股票庫存紀錄自系統中完整抹除！")
                     st.rerun()
                 except Exception as del_err:
-                    st.error(f"刪除庫存失敗，詳細錯誤訊息: {del_err}")
+                    st.error(f"刪除庫存失敗: {del_err}")
