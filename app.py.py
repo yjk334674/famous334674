@@ -20,7 +20,7 @@ except ImportError:
     yf = None
 
 # ==========================================
-# 🎨 現代可愛風 UI 與主題顏色管理 (黑白樣式)
+# 🎨 現代可愛風 UI 與主題顏色管理 (極致黑白樣式)
 # ==========================================
 st.set_page_config(page_title="🦉 資本大管家 Asset-Duolingo", page_icon="🦉", layout="wide")
 
@@ -35,9 +35,12 @@ if theme_choice == "☀️ 軟萌亮白 (日暮白)":
             background-color: #FDFBF7;
             color: #4A4A4A;
         }
+        h1, h2, h3, h4, h5, h6, p, label, span {
+            color: #4A4A4A !important;
+            font-family: "Microsoft JhengHei", sans-serif;
+        }
         h1, h2, h3 {
             color: #FF7B94 !important;
-            font-family: "Microsoft JhengHei", sans-serif;
         }
         .stButton>button {
             background-color: #FF9AA2 !important;
@@ -54,20 +57,47 @@ if theme_choice == "☀️ 軟萌亮白 (日暮白)":
         </style>
     """, unsafe_allow_html=True)
 else:
-    # 注入極簡酷黑、霓虹可愛風格
+    # 注入【全介面極致純黑、高對比爆亮白】視覺
     st.markdown("""
         <style>
-        .stApp {
-            background-color: #1A1A24;
-            color: #E0E0E6;
+        /* 1. 主畫面與側邊欄全黑化 */
+        .stApp, [data-testid="stSidebar"], [data-testid="stHeader"] {
+            background-color: #000000 !important;
+            color: #FFFFFF !important;
         }
-        h1, h2, h3 {
-            color: #FF83A8 !important;
+        
+        /* 2. 強制所有層級的文字、標籤變純白 */
+        h1, h2, h3, h4, h5, h6, p, label, span, li, small {
+            color: #FFFFFF !important;
             font-family: "Microsoft JhengHei", sans-serif;
         }
+        
+        /* 3. 特殊標題加上可愛粉霓虹，保持設計感 */
+        h1, h2, h3 {
+            color: #FF83A8 !important;
+        }
+        
+        /* 4. 徹底解決表格黑色字體看不見的問題 (st.table & st.dataframe 強化) */
+        table, th, td, tr, .stTable {
+            color: #FFFFFF !important;
+            background-color: #111111 !important;
+            border-color: #333333 !important;
+        }
+        th {
+            background-color: #222222 !important;
+            font-weight: bold !important;
+        }
+        div[data-testid="stTable"] td {
+            color: #FFFFFF !important;
+        }
+        div[data-testid="stDataFrame"] {
+            background-color: #111111 !important;
+        }
+        
+        /* 5. 按鈕與進度條調整 */
         .stButton>button {
             background-color: #A8E6CF !important;
-            color: #1A1A24 !important;
+            color: #000000 !important;
             border-radius: 20px !important;
             font-weight: bold !important;
             border: none !important;
@@ -75,8 +105,25 @@ else:
         .stProgress > div > div > div > div {
             background-color: #FF83A8 !important;
         }
+        
+        /* 6. 指標卡片數值高亮 */
         div[data-testid="stMetricValue"] {
             color: #A8E6CF !important;
+            font-weight: bold !important;
+        }
+        div[data-testid="stMetricLabel"] {
+            color: #CCCCCC !important;
+        }
+        
+        /* 7. 輸入框與下拉選單微調，避免全黑找不到邊框 */
+        div[data-baseweb="select"], input, textarea {
+            background-color: #1A1A1A !important;
+            color: #FFFFFF !important;
+            border: 1px solid #444444 !important;
+        }
+        div[role="listbox"] {
+            background-color: #1A1A1A !important;
+            color: #FFFFFF !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -355,7 +402,7 @@ else:
         df_tx = df_tx_all.copy()
 
     # ---------------------------------------------------------
-    # 模組 0：🏠 總資產智慧管理大盤 (可愛風)
+    # 模組 0：🏠 總資產智慧管理大盤
     # ---------------------------------------------------------
     if module == "🏠 城堡總資產大盤":
         st.title("🌟 資本大管家・資產魔法城堡")
@@ -409,6 +456,8 @@ else:
             if invest_sum_twd > 0:
                 df_summary = pd.concat([df_summary, pd.DataFrame([{"資產類別": "證券投資 (台美股加總)", "餘額 (元)": invest_sum_twd}])], ignore_index=True)
             df_summary["所佔比例"] = df_summary["餘額 (元)"].apply(lambda x: f"{(x / net_worth * 100):.1f} %" if net_worth > 0 else "0%")
+            
+            # 使用更直覺的表格渲染，搭配我們注入的極致高對比 CSS
             st.table(df_summary.rename(columns={"餘額 (元)": "總金額 (元)"}))
         else:
             st.info("新城堡空空如也？先前往「🏦 2. 寶箱帳戶維護」建立你的第一個魔法錢包吧！")
@@ -631,7 +680,7 @@ else:
                 hist_date = col_h1.date_input("當初捕捉日期", value=date.today())
                 hist_name = col_h2.text_input("星星代號 (如: 2330 / AAPL)", key="stock_code_history")
                 hist_price = col_h3.number_input("買入單價 (原幣)", min_value=0.1, value=100.0)
-                hist_qty = col_h4.持有股數 = col_h4.number_input("持有顆數", min_value=1, value=1000)
+                hist_qty = col_h4.number_input("持有顆數", min_value=1, value=1000)
                 
                 if st.form_submit_button("📥 快速收納至持股星盤"):
                     if hist_name.strip():
