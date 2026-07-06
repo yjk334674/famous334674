@@ -19,8 +19,68 @@ try:
 except ImportError:
     yf = None
 
-# 設定網頁
-st.set_page_config(page_title="🦉 富豪多鄰國：自訂挑戰版", page_icon="🦉", layout="wide")
+# ==========================================
+# 🎨 現代可愛風 UI 與主題顏色管理 (黑白樣式)
+# ==========================================
+st.set_page_config(page_title="🦉 資本大管家 Asset-Duolingo", page_icon="🦉", layout="wide")
+
+# 讓使用者在側邊欄最上方自由切換外觀樣式
+theme_choice = st.sidebar.selectbox("🎨 切換大管家視覺風格", ["☀️ 軟萌亮白 (日暮白)", "🌙 極簡酷黑 (深夜黑)"])
+
+if theme_choice == "☀️ 軟萌亮白 (日暮白)":
+    # 注入现代粉嫩、亮色可愛風格
+    st.markdown("""
+        <style>
+        .stApp {
+            background-color: #FDFBF7;
+            color: #4A4A4A;
+        }
+        h1, h2, h3 {
+            color: #FF7B94 !important;
+            font-family: "Microsoft JhengHei", sans-serif;
+        }
+        .stButton>button {
+            background-color: #FF9AA2 !important;
+            color: white !important;
+            border-radius: 20px !important;
+            border: none !important;
+        }
+        .stProgress > div > div > div > div {
+            background-color: #FFB7B2 !important;
+        }
+        div[data-testid="stMetricValue"] {
+            color: #FF7B94 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+else:
+    # 注入極簡酷黑、霓虹可愛風格
+    st.markdown("""
+        <style>
+        .stApp {
+            background-color: #1A1A24;
+            color: #E0E0E6;
+        }
+        h1, h2, h3 {
+            color: #FF83A8 !important;
+            font-family: "Microsoft JhengHei", sans-serif;
+        }
+        .stButton>button {
+            background-color: #A8E6CF !important;
+            color: #1A1A24 !important;
+            border-radius: 20px !important;
+            font-weight: bold !important;
+            border: none !important;
+        }
+        .stProgress > div > div > div > div {
+            background-color: #FF83A8 !important;
+        }
+        div[data-testid="stMetricValue"] {
+            color: #A8E6CF !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
 
 # ==========================================
 # ⏱️ 自動刷新機制設定 (每 30 秒畫面自動跳動更新市價與匯率)
@@ -115,15 +175,15 @@ if "username" not in st.session_state:
 # 🚪 3. 前端註冊 / 登入介面
 # ==========================================
 if not st.session_state.logged_in:
-    st.title("🦉 歡迎來到 富豪多鄰國 Asset-Duolingo")
-    st.subheader("自訂你的儲蓄賽道，讓理財變得像玩遊戲一樣好玩！")
-    tab1, tab2 = st.tabs(["🔑 會員登入", "📝 快速註冊"])
+    st.title("🦉 資本大管家 Asset-Duolingo")
+    st.subheader("🧸 打造專屬你的存錢萌賽道，理財就像收集神奇糖果一樣簡單！")
+    tab1, tab2 = st.tabs(["🔑 夥伴登入", "📝 快速加入大管家"])
     
     with tab1:
-        login_user = st.text_input("帳號 (使用者名稱)", key="login_user")
+        login_user = st.text_input("帳號 (大管家稱呼)", key="login_user")
         login_pwd = st.text_input("密碼", type="password", key="login_pwd")
         
-        if st.button("立即登入並接受 DuDu 監督", type="primary", use_container_width=True):
+        if st.button("立即進入金幣城堡 🏰", type="primary", use_container_width=True):
             if login_user and login_pwd:
                 try:
                     response = supabase.table("users").select("*").eq("username", login_user).execute()
@@ -132,39 +192,38 @@ if not st.session_state.logged_in:
                         if user_record["password"] == hash_password(login_pwd):
                             st.session_state.logged_in = True
                             st.session_state.username = login_user
-                            st.success(f"🎉 歡迎回來！DuDu 正在盯著你的荷包喔！")
+                            st.success(f"🎉 歡迎回來！DuDu 已經在金庫門口等捏！")
                             st.rerun()
-                        else: st.error("❌ 密碼錯誤，DuDu 在瞪你囉！")
-                    else: st.error("❌ 找不到帳號，快去註冊加入挑戰！")
+                        else: st.error("❌ 密碼不對喔，DuDu 在偷偷歪頭瞪你！(｡•́︿•̀｡)")
+                    else: st.error("❌ 找不到這個大管家，快去隔壁註冊一個！")
                 except Exception as ex: st.error(f"資料庫錯誤: {ex}")
-            else: st.warning("⚠️ 請填寫完整帳號與密碼。")
+            else: st.warning("⚠️ 記得填寫完整的名字與密碼喔！")
                 
     with tab2:
-        reg_user = st.text_input("設定新帳號", key="reg_user")
+        reg_user = st.text_input("設定新名字", key="reg_user")
         reg_pwd = st.text_input("設定新密碼", type="password", key="reg_pwd")
-        reg_pwd_confirm = st.text_input("確認新密碼", type="password", key="reg_pwd_confirm")
+        reg_pwd_confirm = st.text_input("再次確認新密碼", type="password", key="reg_pwd_confirm")
         
-        if st.button("建立帳號並開啟自訂存錢挑戰", use_container_width=True):
+        if st.button("開啟我的軟萌理財之旅 ✨", use_container_width=True):
             if reg_user and reg_pwd and reg_pwd_confirm:
-                if reg_pwd != reg_pwd_confirm: st.error("❌ 兩次輸入的密碼不一致")
+                if reg_pwd != reg_pwd_confirm: st.error("❌ 兩次密碼長得不一樣捏？")
                 else:
                     try:
                         check_exist = supabase.table("users").select("username").execute()
                         if any(x["username"] == reg_user for x in check_exist.data): 
-                            st.error("❌ 該帳號已被佔用！")
+                            st.error("❌ 這個名字已經有人用了，換個更可愛的吧！")
                         else:
-                            # 預設幫使用者寫入初始挑戰欄位資訊
                             supabase.table("users").insert({
                                 "username": reg_user, 
                                 "password": hash_password(reg_pwd),
-                                "challenge_title": "大二前的存錢大作戰",
-                                "challenge_target": 1000000.0,
+                                "challenge_title": "我的第一筆金幣大作戰 🍭",
+                                "challenge_target": 100000.0,
                                 "challenge_start": str(date.today()),
                                 "challenge_end": str(date.today() + timedelta(days=365))
                             }).execute()
-                            st.success("🎉 註冊成功！快切換至「會員登入」頁籤吧！")
-                    except Exception as ex: st.error(f"註冊失敗: {ex}")
-            else: st.warning("⚠️ 請填寫所有註冊欄位。")
+                            st.success("🎉 註冊好啦！快切換回「夥伴登入」登入吧！")
+                    except Exception as ex: st.error(f"加入失敗: {ex}")
+            else: st.warning("⚠️ 欄位不要漏掉喔，加油！")
 
 # ==========================================
 # 📊 4. 主程式控制核心 (會員登入後)
@@ -182,13 +241,12 @@ else:
         tx_res = supabase.table("transactions").select("*").eq("username", current_user).execute()
         pf_res = supabase.table("portfolio").select("*").eq("username", current_user).execute()
     except Exception as api_err:
-        st.error(f"📡 資料庫連線出錯: {api_err}")
+        st.error(f"📡 連線小精靈迷路了: {api_err}")
         st.stop()
 
     user_info = user_res.data[0] if user_res.data else {}
     
-    # 解析或初始化挑戰資料（防止舊帳號無欄位問題）
-    c_title = user_info.get("challenge_title", "我的自訂理財大挑戰")
+    c_title = user_info.get("challenge_title", "我的自訂理財大挑戰 🍦")
     try:
         c_target = float(user_info.get("challenge_target", 500000))
     except:
@@ -227,7 +285,7 @@ else:
             else:
                 break
 
-    # 計算當前總淨資產 (台幣計價大加總)
+    # 計算當前總淨資產
     cash_sum = sum(float(x["amount"]) for x in raw_assets)
     invest_sum_twd = 0.0
     if not df_pf.empty:
@@ -249,28 +307,30 @@ else:
     net_worth = cash_sum + invest_sum_twd
 
     # ---------------------------------------------------------
-    # 🦉 側邊欄 DuDu 吉祥物狀態反饋
+    # 🦉 側邊欄 DuDu 吉祥物狀態反饋 (可愛萌化)
     # ---------------------------------------------------------
-    st.sidebar.title(f"👤 冒險者：{current_user}")
+    st.sidebar.divider()
+    user_badge = "👑 明星大管家" if net_worth >= 1000000 else "✨ 實習大管家"
+    st.sidebar.markdown(f"### 🧁 夥伴：{current_user}\n`{user_badge}`")
     
-    streak_fire = "🔥" if has_logged_today else "💤"
+    streak_fire = "💖" if has_logged_today else "💤"
     st.sidebar.subheader(f"{streak_fire} 記帳連擊：{streak_count} 天")
     st.sidebar.divider()
     
     if not has_logged_today:
-        st.sidebar.error(f"**DuDu 的嚴厲督促 (😡)：**\n今天你還沒記帳喔！想假裝沒花錢是不是？快點進「日常記帳」！")
+        st.sidebar.error(f"**🦉 DuDu 的小提醒 ( •̀ ω •́ )✧：**\n今天你還沒記帳唷！不可以裝作忘記花錢，快去「日常記帳」蓋個章！")
     else:
-        st.sidebar.success(f"**DuDu 的溫柔誇獎 (🥰)：**\n今天有乖乖記帳，表現得很好！繼續保持，早日達成你的自訂挑戰！")
+        st.sidebar.success(f"**🦉 DuDu 瘋狂揉臉 (〃'▽'〃)：**\n今天有乖乖記帳，太棒了吧！給你貼一朵小紅花，繼續保持喔！")
         
     st.sidebar.divider()
-    st.sidebar.metric("💵 即時美金匯率", f"{usd_twd_rate:.2f} TWD")
+    st.sidebar.metric("🧋 即時美金匯率", f"{usd_twd_rate:.2f} TWD")
     
     module = st.sidebar.radio(
-        "🗂️ 核心功能選單",
-        ["🏠 總資產智慧管理大盤", "🏆 設定我的專屬存錢挑戰", "1. 📝 日常記帳 (觸發連擊)", "2. 🏦 資產帳戶維護", "3. 📈 投資組合 (台美股連動)"]
+        "📂 大管家魔法選單",
+        ["🏠 城堡總資產大盤", "🏆 魔法自訂存錢挑戰賽", "🍬 1. 隨手記帳 (累積連擊)", "🏦 2. 寶箱帳戶維護", "📈 3. 星際投資組合"]
     )
     st.sidebar.divider()
-    if st.sidebar.button("登出系統", type="secondary", use_container_width=True):
+    if st.sidebar.button("離開大管家 🚪", type="secondary", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.rerun()
@@ -284,7 +344,7 @@ else:
             a_type = name[1:pos]
             display_name = name[pos+1:]
         else:
-            a_type = "未分類現金"
+            a_type = "未分類口袋"
             display_name = name
         parsed_assets.append({"id_key": name, "資產類別": a_type, "帳戶名稱": display_name, "餘額 (元)": float(a["amount"])})
     df_assets_parsed = pd.DataFrame(parsed_assets) if parsed_assets else pd.DataFrame(columns=["id_key", "資產類別", "帳戶名稱", "餘額 (元)"])
@@ -295,18 +355,17 @@ else:
         df_tx = df_tx_all.copy()
 
     # ---------------------------------------------------------
-    # 模組 0：🏠 總資產智慧管理大盤
+    # 模組 0：🏠 總資產智慧管理大盤 (可愛風)
     # ---------------------------------------------------------
-    if module == "🏠 總資產智慧管理大盤":
-        st.title("💰 總資產智慧管理大盤")
+    if module == "🏠 城堡總資產大盤":
+        st.title("🌟 資本大管家・資產魔法城堡")
         
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("💵 帳戶總餘額", f"{cash_sum:,.0f} 元")
-        m2.metric("📊 投資總市值 (台美股折算)", f"{invest_sum_twd:,.0f} 元")
-        m3.metric("🔥 記帳連擊", f"{streak_count} 天")
-        m4.metric("👑 個人淨資產", f"{net_worth:,.0f} 元")
+        m1.metric("🍧 錢包總餘額", f"{cash_sum:,.0f} 元")
+        m2.metric("📊 證券星星市值", f"{invest_sum_twd:,.0f} 元")
+        m3.metric("🔥 記帳連動天數", f"{streak_count} 天")
+        m4.metric("👑 魔法總淨資產", f"{net_worth:,.0f} 元")
         
-        # 🎯 核心：展示目前進行中的自訂存錢挑戰
         st.divider()
         st.subheader(f"🏆 當前挑戰賽事：{c_title}")
         
@@ -316,36 +375,35 @@ else:
         col_p1, col_p2 = st.columns([3, 1])
         with col_p1:
             st.progress(progress_pct)
-            st.write(f"📈 當前資產：**{net_worth:,.0f}** 元 / 目標 **{c_target:,.0f}** 元 (**{progress_pct*100:.2f}%**)")
+            st.write(f"📈 能量收集進度：**{net_worth:,.0f}** 元 / 目標 **{c_target:,.0f}** 元 (**{progress_pct*100:.2f}%**)")
             
             if days_left > 0:
-                st.info(f"⏳ 距離挑戰截止日還有 **{days_left}** 天！")
+                st.info(f"⏳ 距離約定截止日還有 **{days_left}** 天！加油鴨！")
                 needed_amount = c_target - net_worth
                 if needed_amount > 0:
                     daily_needed = needed_amount / days_left
-                    st.caption(f"💡 溫馨精算：若要在期限內達標，平均每天資產需淨增長 **{daily_needed:,.1f}** 元。")
+                    st.caption(f"💡 大管家精算：每天只要再多存 **{daily_needed:,.1f}** 元就能把獎勵抱回家囉！")
                 else:
                     st.balloons()
-                    st.success("🎉 太神啦！你的總資產已經提前超越挑戰目標囉！")
+                    st.success("🎉 太厲害了！你的資產已經提前滿出來，挑戰成功！")
             elif days_left == 0:
-                st.warning("🚨 今天就是挑戰的最後大限截止日！衝啊！")
+                st.warning("🚨 終點線就在今天！把最後的能量存進去吧！")
             else:
-                st.error(f"❌ 挑戰賽已於 {-days_left} 天前截止。快去建立下一場全新挑戰吧！")
+                st.error(f"❌ 這場挑戰在 {-days_left} 天前落幕了。快去開啟下一場全新的魔法冒險！")
                 
         with col_p2:
-            # 根據進度條顯示吉祥物不同狀態
             if progress_pct < 0.2:
-                st.warning("🦉 DuDu：挑戰剛起跑！你現在的資產進度還很渺小，少喝一杯星巴克，多累積點連擊！")
+                st.warning("🦉 DuDu：挑戰剛起飛！現在的進度還像小豆苗一樣，每天少喝一杯手搖飲，多澆點水吧！( •̀ ω •́ )✧")
             elif progress_pct < 0.6:
-                st.info("🦉 DuDu：哎喲不錯嘛，進度正在穩健攀升！繼續保持記帳自律，我看好你。")
+                st.info("🦉 DuDu：哎呀不錯喔！小豆苗開始長大了！保持每天記帳，很快就能看到果實了！")
             elif progress_pct < 1.0:
-                st.success("🦉 DuDu：哇！離你的夢想目標越來越近了！快點加速衝刺終點線！")
+                st.success("🦉 DuDu：哇哇哇！離目標只剩一點點了！快點加速衝刺，終點有大蛋糕等著你！🎂")
             else:
                 st.balloons()
-                st.success("👑 DuDu：頂禮膜拜！你完美征服了這場財務挑戰，真是不折不扣的理財大師！")
+                st.success("👑 DuDu：請收下我的膝蓋！你已經是全宇宙最強的理財大管家了！(≧▽≦)")
                 
         st.divider()
-        st.subheader("📊 多元資產類別分佈比例")
+        st.subheader("🧁 寶箱類別資產比例")
         if not df_assets_parsed.empty:
             df_summary = df_assets_parsed.groupby("資產類別")["餘額 (元)"].sum().reset_index()
             if invest_sum_twd > 0:
@@ -353,30 +411,29 @@ else:
             df_summary["所佔比例"] = df_summary["餘額 (元)"].apply(lambda x: f"{(x / net_worth * 100):.1f} %" if net_worth > 0 else "0%")
             st.table(df_summary.rename(columns={"餘額 (元)": "總金額 (元)"}))
         else:
-            st.info("歡迎加入！請先前往「2. 🏦 資產帳戶維護」建立你的第一個錢包。")
+            st.info("新城堡空空如也？先前往「🏦 2. 寶箱帳戶維護」建立你的第一個魔法錢包吧！")
 
     # ---------------------------------------------------------
-    # 模組：🏆 設定我的專屬存錢挑戰 (新功能！)
+    # 模組：🏆 魔法自訂存錢挑戰賽
     # ---------------------------------------------------------
-    elif module == "🏆 設定我的專屬存錢挑戰":
-        st.title("🏆 自訂我的專屬存錢理財挑戰賽")
-        st.write("不論是「大二前存到100萬」、「暑假出國基金3萬」，還是「買新機車存5萬」，你可以在此自由規劃專屬賽道與時間軸！")
+    elif module == "🏆 魔法自訂存錢挑戰賽":
+        st.title("🏆 自訂專屬理財賽道")
+        st.write("想要買夢幻公仔、換新手機，還是準備旅行基金？在這裡自由定義你的挑戰目標與時間軸！")
         
         st.divider()
         with st.form("custom_challenge_form"):
-            new_title = st.text_input("🎯 挑戰賽名稱（例如：大二前存到百萬、買MacBook計畫）", value=c_title)
-            new_target = st.number_input("💰 挑戰目標金額（新台幣）", min_value=1000.0, value=c_target, step=10000.0)
+            new_title = st.text_input("🎯 挑戰賽取個可愛名字（例如：精緻女孩儲蓄計畫 💄、買新車車大作戰 🏎️）", value=c_title)
+            new_target = st.number_input("💰 挑戰目標金額 (NT$)", min_value=1000.0, value=c_target, step=10000.0)
             
             c1, c2 = st.columns(2)
-            new_start = c1.date_input("📅 挑戰開始日期", value=c_start)
-            new_end = c2.date_input("📅 預計達成日期", value=c_end)
+            new_start = c1.date_input("📅 冒險開始日期", value=c_start)
+            new_end = c2.date_input("📅 夢想達成日期", value=c_end)
             
-            if st.form_submit_button("💾 儲存並開啟全新賽道", type="primary", use_container_width=True):
+            if st.form_submit_button("💾 儲存並召喚全新挑戰賽", type="primary", use_container_width=True):
                 if new_end <= new_start:
-                    st.error("❌ 錯誤：達成日期必須大於開始日期！請重新選擇區間。")
+                    st.error("❌ 哎呀！結束日期必須比開始日期還要晚喔！")
                 else:
                     try:
-                        # 將自訂挑戰同步寫入雲端資料庫保存
                         supabase.table("users").update({
                             "challenge_title": new_title.strip(),
                             "challenge_target": new_target,
@@ -385,44 +442,44 @@ else:
                         }).eq("username", current_user).execute()
                         
                         st.balloons()
-                        st.success(f"🎉 成功開啟全新挑戰：【{new_title}】！目標金額：NT$ {new_target:,.0f} 元。DuDu 已經準備好嚴格監督你囉！")
+                        st.success(f"🎉 新挑戰召喚成功：【{new_title}】！目標金額：NT$ {new_target:,.0f} 元。DuDu 已經把計時器按下去囉！")
                         st.rerun()
                     except Exception as ex:
-                        st.error(f"挑戰設定儲存失敗: {ex}")
+                        st.error(f"挑戰儲存失敗了: {ex}")
                         
-        st.write("### 💡 目前的挑戰快照：")
+        st.write("### 💡 目前正在運作的挑戰卷軸：")
         st.json({
-            "挑戰項目": c_title,
+            "項目名稱": c_title,
             "目標金額": f"{c_target:,.0f} 元",
-            "起點日期": str(c_start),
-            "終點日期": str(c_end),
+            "啟程日期": str(c_start),
+            "抵達日期": str(c_end),
             "當前淨資產水位": f"{net_worth:,.0f} 元"
         })
 
     # ---------------------------------------------------------
-    # 模組 1：📝 日常記帳
+    # 模組 1：🍬 隨手記帳
     # ---------------------------------------------------------
-    elif module == "1. 📝 日常記帳 (觸發連擊)":
-        st.title("📝 隨手日常記帳中心")
+    elif module == "🍬 1. 隨手記帳 (累積連擊)":
+        st.title("🍬 快樂日常隨手記帳")
         
         if not asset_list:
-            st.warning("⚠️ 您目前沒有任何資產帳戶，請先去建立帳戶！")
+            st.warning("⚠️ 你還沒有任何魔法寶箱（帳戶）可以裝錢，快去隔壁建立一個！")
         else:
             c1, c2 = st.columns([1, 2])
             with c1:
-                st.subheader("📥 新增日常收支")
+                st.subheader("📥 填寫今日收支")
                 with st.form("tx_form", clear_on_submit=True):
                     tx_date = st.date_input("記帳日期", value=date.today())
-                    tx_type = st.selectbox("交易類型", ["支出", "收入"])
+                    tx_type = st.selectbox("收支方向", ["支出", "收入"])
                     
-                    asset_labels = {x: x.replace("[", "").replace("]", " -> ") for x in asset_list}
-                    tx_asset = st.selectbox("使用帳戶(資產)", options=list(asset_labels.keys()), format_func=lambda x: asset_labels[x])
+                    asset_labels = {x: x.replace("[", "").replace("]", " ➔ ") for x in asset_list}
+                    tx_asset = st.selectbox("使用哪個錢包", options=list(asset_labels.keys()), format_func=lambda x: asset_labels[x])
                     
-                    tx_cate = st.text_input("分類 (如: 晚餐、飲料、薪水)")
-                    tx_amt = st.number_input("金額 (元)", min_value=1, value=100)
-                    tx_note = st.text_input("備註")
+                    tx_cate = st.text_input("小分類 (如: 美味晚餐 ☕、買衣服 👗、發薪水了 💵)")
+                    tx_amt = st.number_input("變動金額 (元)", min_value=1, value=100)
+                    tx_note = st.text_input("心情備註")
                     
-                    if st.form_submit_button("🔥 確認記帳並蓄力連擊"):
+                    if st.form_submit_button("🔥 蓋章記帳！"):
                         supabase.table("transactions").insert({
                             "username": current_user, "date": str(tx_date), "type": tx_type,
                             "asset_name": tx_asset, "category": tx_cate, "amount": tx_amt, "note": tx_note
@@ -433,58 +490,58 @@ else:
                         supabase.table("own_assets").update({"amount": new_amt}).eq("username", current_user).eq("asset_name", tx_asset).execute()
                         
                         st.balloons()
-                        st.success(f"🎉 記帳成功！連擊加能量！DuDu 對你露出了讚許的微笑。")
+                        st.success(f"🎉 記帳完成！連擊能量注入成功！DuDu 給了你一個讚許的眼神。")
                         st.rerun()
             with c2:
-                st.subheader("📋 本日最新日常記帳明細")
+                st.subheader("📋 今天記錄的彩色明細")
                 today_tx = df_tx[df_tx["date"] == date.today()] if not df_tx.empty else pd.DataFrame()
                 if not today_tx.empty:
                     st.dataframe(today_tx[["date", "type", "asset_name", "category", "amount", "note"]], use_container_width=True)
                 else:
-                    st.info("💡 今天還空空如也喔！快記一筆別讓 DuDu 生氣！")
+                    st.info("💡 今天還是一片空白呢！快記一筆，不要讓連擊斷掉唷！")
 
     # ---------------------------------------------------------
-    # 模組 2：🏦 資產帳戶維護
+    # 模組 2：🏦 寶箱帳戶維護
     # ---------------------------------------------------------
-    elif module == "2. 🏦 資產帳戶維護":
-        st.title("🏦 資產帳戶維護與多維度報表")
-        tab_asset1, tab_asset2 = st.tabs(["➕ 建立新帳戶", "🔄 帳戶資金劃轉"])
+    elif module == "🏦 2. 寶箱帳戶維護":
+        st.title("🏦 寶箱帳戶管理維護")
+        tab_asset1, tab_asset2 = st.tabs(["➕ 鑄造新錢包", "🔄 內部資金搬家"])
         
         with tab_asset1:
-            st.subheader("建立新資產帳戶")
+            st.subheader("開啟全新資產儲蓄類別")
             with st.form("new_asset_categorical", clear_on_submit=True):
                 col_a, col_b, col_c = st.columns(3)
-                asset_class = col_a.selectbox("選擇資產類別", ["現金口袋", "活期存款", "數位帳戶", "定期存款", "外幣資產", "虛擬貨幣", "實體資產(機車/汽車)", "其他資產"])
-                custom_name = col_b.text_input("輸入名稱 (如: 數位高利活存、Richart)")
-                init_balance = col_c.number_input("初始餘額 / 價值 (元)", min_value=0, value=0)
+                asset_class = col_a.selectbox("寶箱種類", ["🧸 現金口袋", "🏦 活期存款", "📱 數位帳戶", "🔒 定期存款", "✈️ 外幣資產", "🪙 虛擬貨幣", "🛵 實體資產", "📦 其他寶物"])
+                custom_name = col_b.text_input("取個小名 (如: 旅遊豬豬、Richart)")
+                init_balance = col_c.number_input("裡面先塞多少錢 (元)", min_value=0, value=0)
                 
-                if st.form_submit_button("💾 立即新增此資產帳戶", use_container_width=True, type="primary"):
+                if st.form_submit_button("🎨 封印並啟用帳戶", use_container_width=True, type="primary"):
                     if custom_name.strip():
                         combined_name = f"[{asset_class}]{custom_name.strip()}"
-                        if combined_name in asset_list: st.error("❌ 該資產名稱已存在！")
+                        if combined_name in asset_list: st.error("❌ 這個寶箱名稱重複了捏！")
                         else:
                             try:
                                 supabase.table("own_assets").insert({"username": current_user, "asset_name": combined_name, "amount": init_balance}).execute()
                                 supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "收入", "asset_name": combined_name, "category": "帳戶初始化", "amount": init_balance, "note": f"開戶全新資產：{asset_class}"}).execute()
-                                st.success(f"🎉 成功解鎖新資產版圖： [{asset_class}] {custom_name} ！")
+                                st.success(f"🎉 成功解鎖新寶箱： [{asset_class}] {custom_name} ！")
                                 st.rerun()
-                            except Exception as ex: st.error(f"資料庫寫入失敗: {ex}")
-                    else: st.warning("⚠️ 請輸入資產帳戶名稱。")
+                            except Exception as ex: st.error(f"連線失敗了: {ex}")
+                    else: st.warning("⚠️ 給寶箱取個名字嘛～")
                     
         with tab_asset2:
-            st.subheader("🔄 內部資產帳戶資金劃轉")
+            st.subheader("🔄 內部寶箱資金互轉")
             if len(asset_list) < 2:
-                st.info("💡 至少需要建立兩個資產帳戶才能使用資金劃轉功能。")
+                st.info("💡 你需要至少兩個寶箱才能玩搬家遊戲喔。")
             else:
                 with st.form("transfer_form", clear_on_submit=True):
                     col_t1, col_t2, col_t3 = st.columns(3)
-                    from_asset = col_t1.selectbox("來源帳戶 (轉出)", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " -> "))
-                    to_asset = col_t2.selectbox("目的帳戶 (轉入)", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " -> "))
-                    transfer_amt = col_t3.number_input("劃轉金額 (元)", min_value=1, value=1000)
-                    transfer_note = st.text_input("劃轉備註", value="內部帳戶劃轉")
+                    from_asset = col_t1.selectbox("把錢從這裡拿出來", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " ➔ "))
+                    to_asset = col_t2.selectbox("放到這個寶箱裡", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " ➔ "))
+                    transfer_amt = col_t3.number_input("搬運金額 (元)", min_value=1, value=1000)
+                    transfer_note = st.text_input("搬家備註", value="魔法資金劃轉")
                     
-                    if st.form_submit_button("🚀 確認執行劃轉"):
-                        if from_asset == to_asset: st.error("❌ 來源與目的地不能相同！")
+                    if st.form_submit_button("🚀 開始搬運！"):
+                        if from_asset == to_asset: st.error("❌ 左口袋放右口袋，不能選擇同一個喔！")
                         else:
                             try:
                                 amt_from = next(x["amount"] for x in raw_assets if x["asset_name"] == from_asset)
@@ -493,60 +550,60 @@ else:
                                 supabase.table("own_assets").update({"amount": amt_to + transfer_amt}).eq("username", current_user).eq("asset_name", to_asset).execute()
                                 supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "支出", "asset_name": from_asset, "category": "帳戶劃轉-轉出", "amount": transfer_amt, "note": f"{transfer_note} (流向: {to_asset})"}).execute()
                                 supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "收入", "asset_name": to_asset, "category": "帳戶劃轉-轉入", "amount": transfer_amt, "note": f"{transfer_note} (來源: {from_asset})"}).execute()
-                                st.success(f"🚀 安全劃轉 {transfer_amt:,.0f} 元！")
+                                st.success(f"🚀 成功搬運 {transfer_amt:,.0f} 元！")
                                 st.rerun()
-                            except Exception as ex: st.error(f"劃轉失敗: {ex}")
+                            except Exception as ex: st.error(f"搬運失敗: {ex}")
 
         st.divider()
-        st.subheader("💳 我的帳戶資產分佈明細")
+        st.subheader("💳 當前所有寶箱餘額清單")
         if not df_assets_parsed.empty:
             st.dataframe(df_assets_parsed[["資產類別", "帳戶名稱", "餘額 (元)"]], use_container_width=True)
             
-            st.write("🔧 **帳戶進階管理 (修正與刪除)**")
-            target_asset = st.selectbox("選擇要處理的帳戶", options=df_assets_parsed["id_key"].tolist(), format_func=lambda x: x.replace("[", "").replace("]", " -> "))
+            st.write("🔧 **高級寶箱整理工具 (數值修正/打破寶箱)**")
+            target_asset = st.selectbox("要調整哪個寶箱", options=df_assets_parsed["id_key"].tolist(), format_func=lambda x: x.replace("[", "").replace("]", " ➔ "))
             current_row = df_assets_parsed[df_assets_parsed["id_key"] == target_asset].iloc[0]
             
             edit_col1, edit_col2 = st.columns(2)
-            new_name = edit_col1.text_input("重命名名稱", value=current_row["帳戶名稱"])
-            new_balance = edit_col2.number_input("微調新餘額 (元)", min_value=0.0, value=float(current_row["餘額 (元)"]))
+            new_name = edit_col1.text_input("修改名稱", value=current_row["帳戶名稱"])
+            new_balance = edit_col2.number_input("直接重設新餘額 (元)", min_value=0.0, value=float(current_row["餘額 (元)"]))
             
             btn_col1, btn_col2 = st.columns(2)
-            if btn_col1.button("💾 儲存變更設定", use_container_width=True, type="primary"):
+            if btn_col1.button("💾 魔法校正變更", use_container_width=True, type="primary"):
                 old_balance = float(current_row["餘額 (元)"])
                 fixed_combined_name = f"[{current_row['資產類別']}]{new_name}"
                 if new_balance != old_balance:
                     diff = new_balance - old_balance
                     supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "資產調整", "asset_name": fixed_combined_name, "category": "餘額微調", "amount": abs(diff), "note": f"校正數據，差額: {diff}"}).execute()
                 supabase.table("own_assets").update({"asset_name": fixed_combined_name, "amount": new_balance}).eq("username", current_user).eq("asset_name", target_asset).execute()
-                st.success("⚙️ 帳戶校正完畢！")
+                st.success("⚙️ 數據對齊好囉！")
                 st.rerun()
                 
-            if btn_col2.button("🗑️ 徹底刪除此資產帳戶", use_container_width=True, type="secondary"):
+            if btn_col2.button("🗑️ 徹底打破此寶箱 (刪除)", use_container_width=True, type="secondary"):
                 supabase.table("own_assets").delete().eq("username", current_user).eq("asset_name", target_asset).execute()
-                st.success(f"💥 帳戶已移除！")
+                st.success(f"💥 寶箱碎掉了！")
                 st.rerun()
 
     # ---------------------------------------------------------
-    # 模組 3：📈 投資組合 (台美股連動換算)
+    # 模組 3：📈 星際投資組合
     # ---------------------------------------------------------
-    elif module == "3. 📈 投資組合 (台美股連動)":
-        st.title("📈 交易所即時連動投資組合")
-        st.info(f"💡 當前聯網即時美金匯率為： **{usd_twd_rate:.2f}** TWD。")
+    elif module == "📈 3. 星際投資組合":
+        st.title("📈 星際交易所・即時連動持股")
+        st.info(f"🧁 當前宇宙聯網美金匯率為： **{usd_twd_rate:.2f}** TWD (30秒自動重算損益喔)。")
         
-        tab_inv1, tab_inv2 = st.tabs(["🛒 常規日常交易下單", "📥 導入系統前舊投資持股"])
+        tab_inv1, tab_inv2 = st.tabs(["🛒 常規日常買賣星星", "📥 搬運之前的舊庫存星星"])
         
         with tab_inv1:
-            st.subheader("金融資產交易下單（原幣計價）")
+            st.subheader("下單購買/賣出星星（以該市場原幣計算）")
             with st.form("invest_form", clear_on_submit=True):
                 col_i1, col_i2, col_i3, col_i4, col_i5 = st.columns(5)
                 inv_date = col_i1.date_input("交易日期", value=date.today())
-                inv_type = col_i2.selectbox("交易方向", ["買入", "賣出"])
-                inv_name = col_i3.text_input("股票代號 (如: 0050 / NVDA)", key="stock_code_regular")
-                inv_price = col_i4.number_input("交易單價 (原幣價)", min_value=0.1, value=100.0)
-                inv_qty = col_i5.number_input("交易股數", min_value=1, value=1000)
-                inv_asset_link = st.selectbox("連動扣款/入款資產帳戶", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " -> "))
+                inv_type = col_i2.selectbox("買賣方向", ["買入", "賣出"])
+                inv_name = col_i3.text_input("星星代號 (如: 0050 / TSLA)", key="stock_code_regular")
+                inv_price = col_i4.number_input("每一顆星星單價", min_value=0.1, value=100.0)
+                inv_qty = col_i5.number_input("交易顆數(股數)", min_value=1, value=1000)
+                inv_asset_link = st.selectbox("要從哪顆寶箱連動扣/入款", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " ➔ "))
                 
-                if st.form_submit_button("送出交易紀錄"):
+                if st.form_submit_button("發射交易信號 🚀"):
                     if inv_name and inv_asset_link:
                         total_cash_flow = inv_price * inv_qty
                         curr_asset_amt = next(x["amount"] for x in raw_assets if x["asset_name"] == inv_asset_link)
@@ -554,37 +611,37 @@ else:
                         if inv_type == "買入":
                             supabase.table("own_assets").update({"amount": curr_asset_amt - total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
                             supabase.table("portfolio").insert({"username": current_user, "date": str(inv_date), "asset_name": inv_name.strip().upper(), "type": "買入", "cost": inv_price, "actual_cash": total_cash_flow, "status": "未實現"}).execute()
-                            supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資轉換", "asset_name": inv_asset_link, "category": "證券買入", "amount": total_cash_flow, "note": f"購入 {inv_name.upper()}"}).execute()
-                            st.success(f"🎉 交易下單成功！")
+                            supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資轉換", "asset_name": inv_asset_link, "category": "證券買入", "amount": total_cash_flow, "note": f"購入星星 {inv_name.upper()}"}).execute()
+                            st.success(f"🎉 捕捉到新星星庫存！")
                         elif inv_type == "賣出":
                             unrealized_res = supabase.table("portfolio").select("*").eq("username", current_user).eq("asset_name", inv_name.strip().upper()).eq("status", "未實現").execute()
                             if unrealized_res.data:
                                 target_stock = unrealized_res.data[0]
                                 supabase.table("own_assets").update({"amount": curr_asset_amt + total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
                                 supabase.table("portfolio").update({"type": "賣出", "cost": inv_price, "actual_cash": total_cash_flow, "status": "已實現"}).eq("id", target_stock["id"]).execute()
-                                supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資結算", "asset_name": inv_asset_link, "category": "證券賣出", "amount": total_cash_flow, "note": f"平倉 {inv_name.upper()}"}).execute()
-                                st.success(f"🎉 平倉獲利入帳！")
-                            else: st.error(f"❌ 錯誤：你根本沒有該持股！別想騙 DuDu！")
+                                supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資結算", "asset_name": inv_asset_link, "category": "證券賣出", "amount": total_cash_flow, "note": f"平倉星星 {inv_name.upper()}"}).execute()
+                                st.success(f"🎉 星星平倉，金幣收回！")
+                            else: st.error(f"❌ 哼！你明明就沒有這顆星星，別想騙過 DuDu！")
                         st.rerun()
                         
         with tab_inv2:
-            st.subheader("📥 導入歷史舊庫存 (不扣現金)")
+            st.subheader("📥 填補之前已經持有的歷史庫存 (不影響任何錢包餘額)")
             with st.form("history_invest_form", clear_on_submit=True):
                 col_h1, col_h2, col_h3, col_h4 = st.columns(4)
-                hist_date = col_h1.date_input("購入日期", value=date.today())
-                hist_name = col_h2.text_input("股票代號 (如: 2330 / AAPL)", key="stock_code_history")
-                hist_price = col_h3.number_input("購入單價 (原幣)", min_value=0.1, value=100.0)
-                hist_qty = col_h4.number_input("持有股數", min_value=1, value=1000)
+                hist_date = col_h1.date_input("當初捕捉日期", value=date.today())
+                hist_name = col_h2.text_input("星星代號 (如: 2330 / AAPL)", key="stock_code_history")
+                hist_price = col_h3.number_input("買入單價 (原幣)", min_value=0.1, value=100.0)
+                hist_qty = col_h4.持有股數 = col_h4.number_input("持有顆數", min_value=1, value=1000)
                 
-                if st.form_submit_button("📥 立即補入庫存"):
+                if st.form_submit_button("📥 快速收納至持股星盤"):
                     if hist_name.strip():
                         total_hist_cost = hist_price * hist_qty
                         supabase.table("portfolio").insert({"username": current_user, "date": str(hist_date), "asset_name": hist_name.strip().upper(), "type": "買入", "cost": hist_price, "actual_cash": total_hist_cost, "status": "未實現"}).execute()
-                        st.success(f"🎉 歷史資產導入成功！")
+                        st.success(f"🎉 歷史星星庫存導入成功！")
                         st.rerun()
 
         st.divider()
-        st.subheader("💼 大盤即時未實現庫存明細 (每 30 秒自動聯網刷新)")
+        st.subheader("💼 星盤即時損益估值 (每 30 秒自動聯網連線刷新)")
         
         df_unreal = df_pf[df_pf["status"] == "未實現"].copy() if not df_pf.empty else pd.DataFrame()
         if not df_unreal.empty:
@@ -619,7 +676,7 @@ else:
             
             st.dataframe(
                 df_unreal[["asset_name", "計價幣別", "date", "cost", "投入本金(台幣)", "即時市價(台幣)", "最新市值(台幣)", "即時損益(台幣)"]]
-                .rename(columns={"asset_name": "股票代號", "date": "購入日期", "cost": "買入單價(原幣)"}),
+                .rename(columns={"asset_name": "星星代號", "date": "捕捉日期", "cost": "買入單價(原幣)"}),
                 use_container_width=True
             )
             
@@ -628,6 +685,6 @@ else:
             total_profit_all = total_market_all - total_cost_all
             total_roi = (total_profit_all / total_cost_all * 100) if total_cost_all > 0 else 0
             
-            st.metric("📊 台美全庫存即時總損益 (新台幣大加總)", f"{total_profit_all:,.0f} 元", f"綜合即時總報酬率：{total_roi:.2f} %")
+            st.metric("🧁 全星盤即時總損益 (折合新台幣)", f"{total_profit_all:,.0f} 元", f"綜合投資超能力報酬率：{total_roi:.2f} %")
         else:
-            st.info("目前尚無未實現持股。")
+            st.info("目前尚無未實現的星星持股唷。")
