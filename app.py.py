@@ -110,7 +110,6 @@ if not st.session_state.logged_in:
         if st.button("立即登入", type="primary", use_container_width=True):
             if login_user and login_pwd:
                 try:
-                    # 💡 已修正對應到正確的 'users' 資料表
                     response = supabase.table("users").select("*").eq("username", login_user).execute()
                     if response.data:
                         user_record = response.data[0]
@@ -194,7 +193,8 @@ else:
     if not df_tx_all.empty:
         df_tx_all["date"] = pd.to_datetime(df_tx_all["date"]).dt.date
         df_tx_all["amount"] = df_tx_all["amount"].astype(float)
-        df_tx = df_tx_all[~df_tx_all["category"].isin(["證券買入", "證券賣出", "餘額微調"])].copy()
+        # 過濾掉內部功能標籤，保留日常記帳明細
+        df_tx = df_tx_all[~df_tx_all["category"].isin(["證券買入", "證券賣出", "餘額微調", "帳戶劃轉-轉出", "帳戶劃轉-轉入", "歷史庫存導入"])].copy()
     else:
         df_tx = df_tx_all.copy()
         
@@ -291,39 +291,70 @@ else:
                     st.info("💡 今天還沒有常規消費記帳明細喔！")
 
     # ---------------------------------------------------------
-    # 模組 2：🏦 資產帳戶維護與多類別管理 (已整合 Enter 鍵一鍵提交)
+    # 模組 2：🏦 資產帳戶維護與多類別管理（已新增資產帳戶劃轉功能）
     # ---------------------------------------------------------
     elif module == "2. 🏦 資產帳戶與多類別維護":
         st.title("🏦 資產帳戶維護與多維度報表")
         
-        st.subheader("➕ 建立新資產帳戶（支援多種類別）")
-        with st.form("new_asset_categorical", clear_on_submit=True):
-            col_a, col_b, col_c = st.columns(3)
-            asset_class = col_a.selectbox("選擇資產類別", ["現金口袋", "活期存款", "數位帳戶", "定期存款", "外幣資產", "虛擬貨幣", "實體資產(機車/汽車)", "其他資產"])
-            custom_name = col_b.text_input("輸入帳戶/資產名稱 (如: 第一銀行、台新 Richart、幣安)")
-            
-            # 💡 已移除衝突的 key="init_balance_input"，讓按 Enter 不再報錯
-            init_balance = col_c.number_input("初始餘額 / 價值 (元)", min_value=0, value=0)
-            
-            submit_btn = st.form_submit_button("💾 立即新增此資產帳戶", use_container_width=True, type="primary")
-            
-            # 當點擊按鈕，或在上方任何欄位按 Enter 時，都會自動執行此區塊
-            if submit_btn:
-                if custom_name.strip():
-                    combined_name = f"[{asset_class}]{custom_name.strip()}"
-                    if combined_name in asset_list:
-                        st.error("❌ 該資產名稱已存在！")
-                    else:
-                        try:
-                            supabase.table("own_assets").insert({"username": current_user, "asset_name": combined_name, "amount": init_balance}).execute()
-                            supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "收入", "asset_name": combined_name, "category": "帳戶初始化", "amount": init_balance, "note": f"開戶全新多類別資產：{asset_class}"}).execute()
-                            
-                            st.success(f"🎉 成功建立 [{asset_class}] {custom_name} 帳戶！")
-                            st.rerun()
-                        except Exception as ex:
-                            st.error(f"資料庫寫入失敗: {ex}")
-                else:
-                    st.warning("⚠️ 請輸入資產帳戶名稱。")
+        # 建立兩個分頁，一個管開戶、一個管劃轉
+        tab_asset1, tab_asset2 = st.tabs(["➕ 建立新帳戶", "🔄 帳戶資金劃轉"])
+        
+        with tab_asset1:
+            st.subheader("建立新資產帳戶（支援多種類別）")
+            with st.form("new_asset_categorical", clear_on_submit=True):
+                col_a, col_b, col_c = st.columns(3)
+                asset_class = col_a.selectbox("選擇資產類別", ["現金口袋", "活期存款", "數位帳戶", "定期存款", "外幣資產", "虛擬貨幣", "實體資產(機車/汽車)", "其他資產"])
+                custom_name = col_b.text_input("輸入帳戶/資產名稱 (如: 第一銀行、台新 Richart、幣安)")
+                init_balance = col_c.number_input("初始餘額 / 價值 (元)", min_value=0, value=0)
+                
+                submit_btn = st.form_submit_button("💾 立即新增此資產帳戶", use_container_width=True, type="primary")
+                
+                if submit_btn:
+                    if custom_name.strip():
+                        combined_name = f"[{asset_class}]{custom_name.strip()}"
+                        if combined_name in asset_list:
+                            st.error("❌ 該資產名稱已存在！")
+                        else:
+                            try:
+                                supabase.table("own_assets").insert({"username": current_user, "asset_name": combined_name, "amount": init_balance}).execute()
+                                supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "收入", "asset_name": combined_name, "category": "帳戶初始化", "amount": init_balance, "note": f"開戶全新多類別資產：{asset_class}"}).execute()
+                                
+                                st.success(f"🎉 成功建立 [{asset_class}] {custom_name} 帳戶！")
+                                st.rerun()
+                            except Exception as ex: st.error(f"資料庫寫入失敗: {ex}")
+                    else: st.warning("⚠️ 請輸入資產帳戶名稱。")
+                    
+        with tab_asset2:
+            st.subheader("🔄 內部資產帳戶資金劃轉")
+            if len(asset_list) < 2:
+                st.info("💡 至少需要建立兩個資產帳戶才能使用資金劃轉功能。")
+            else:
+                with st.form("transfer_form", clear_on_submit=True):
+                    col_t1, col_t2, col_t3 = st.columns(3)
+                    from_asset = col_t1.selectbox("來源帳戶 (轉出)", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " -> "))
+                    to_asset = col_t2.selectbox("目的帳戶 (轉入)", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " -> "))
+                    transfer_amt = col_t3.number_input("劃轉金額 (元)", min_value=1, value=1000)
+                    transfer_note = st.text_input("劃轉備註 (例如：手動轉帳、存入數位高利活存)", value="內部帳戶劃轉")
+                    
+                    if st.form_submit_button("🚀 確認執行劃轉"):
+                        if from_asset == to_asset:
+                            st.error("❌ 來源帳戶與目的帳戶不能相同！")
+                        else:
+                            try:
+                                amt_from = next(x["amount"] for x in raw_assets if x["asset_name"] == from_asset)
+                                amt_to = next(x["amount"] for x in raw_assets if x["asset_name"] == to_asset)
+                                
+                                # 更新金額
+                                supabase.table("own_assets").update({"amount": amt_from - transfer_amt}).eq("username", current_user).eq("asset_name", from_asset).execute()
+                                supabase.table("own_assets").update({"amount": amt_to + transfer_amt}).eq("username", current_user).eq("asset_name", to_asset).execute()
+                                
+                                # 寫入轉出與轉入兩筆流水帳紀錄
+                                supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "支出", "asset_name": from_asset, "category": "帳戶劃轉-轉出", "amount": transfer_amt, "note": f"{transfer_note} (流向: {to_asset})"}).execute()
+                                supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "收入", "asset_name": to_asset, "category": "帳戶劃轉-轉入", "amount": transfer_amt, "note": f"{transfer_note} (來源: {from_asset})"}).execute()
+                                
+                                st.success(f"🎉 成功由 {from_asset} 劃轉 {transfer_amt:,.0f} 元至 {to_asset}！")
+                                st.rerun()
+                            except Exception as ex: st.error(f"劃轉失敗: {ex}")
 
         st.divider()
         st.subheader("💳 我的帳戶資產分佈明細")
@@ -361,53 +392,84 @@ else:
                     supabase.table("transactions").delete().eq("username", current_user).eq("asset_name", target_asset).execute()
                     st.success(f"💥 已成功將帳戶「{target_asset}」及其關聯記帳明細完整移除！")
                     st.rerun()
-                except Exception as del_err:
-                    st.error(f"刪除失敗，錯誤訊息: {del_err}")
+                except Exception as del_err: st.error(f"刪除失敗，錯誤訊息: {del_err}")
         else:
             st.info("💡 目前尚未建立任何資產帳戶，請使用上方表單建立一個吧！")
 
     # ---------------------------------------------------------
-    # 模組 3：📈 投資組合 (交易所即時連動核心)
+    # 模組 3：📈 投資組合（已新增新增歷史庫存導入功能）
     # ---------------------------------------------------------
     elif module == "3. 📈 投資組合 (交易所即時連動)":
         st.title("📈 交易所即時連動投資組合")
-        st.info("💡 買入股票屬於資產型態轉換（現金變股票），本系統已將其與日常消費支出完全独立分開。")
+        st.info("💡 買入股票屬於資產型態轉換（現金變股票），本系統已將其與日常消費支出完全獨立分開。")
         
-        st.subheader("🛒 金融資產交易下單（買入/賣出）")
-        with st.form("invest_form", clear_on_submit=True):
-            col_i1, col_i2, col_i3, col_i4, col_i5 = st.columns(5)
-            inv_date = col_i1.date_input("交易日期", value=date.today())
-            inv_type = col_i2.selectbox("交易方向", ["買入", "賣出"])
-            inv_name = col_i3.text_input("股票代號 (如: 2330, 0050)")
-            inv_price = col_i4.number_input("買入/賣出單價 (元)", min_value=0.1, value=100.0)
-            inv_qty = col_i5.number_input("交易股數", min_value=1, value=1000)
-            inv_asset_link = st.selectbox("連動扣款/入款資產帳戶", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " -> "))
-            
-            if st.form_submit_button("送出交易紀錄"):
-                if inv_name and inv_asset_link:
-                    total_cash_flow = inv_price * inv_qty
-                    curr_asset_amt = next(x["amount"] for x in raw_assets if x["asset_name"] == inv_asset_link)
-                    
-                    if inv_type == "買入":
-                        supabase.table("own_assets").update({"amount": curr_asset_amt - total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
-                        supabase.table("portfolio").insert({
-                            "username": current_user, "date": str(inv_date), "asset_name": inv_name,
-                            "type": "買入", "cost": inv_price, "actual_cash": total_cash_flow, "status": "未實現"
-                        }).execute()
-                        supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資轉換", "asset_name": inv_asset_link, "category": "證券買入", "amount": total_cash_flow, "note": f"購入庫存 {inv_name} {inv_qty}股，成本 {inv_price}"}).execute()
-                        st.success(f"🎉 成功買入 {inv_name}！")
-                    
-                    elif inv_type == "賣出":
-                        unrealized_res = supabase.table("portfolio").select("*").eq("username", current_user).eq("asset_name", inv_name).eq("status", "未實現").execute()
-                        if unrealized_res.data:
-                            target_stock = unrealized_res.data[0]
-                            supabase.table("own_assets").update({"amount": curr_asset_amt + total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
-                            supabase.table("portfolio").update({"type": "賣出", "cost": inv_price, "actual_cash": total_cash_flow, "status": "已實現"}).eq("id", target_stock["id"]).execute()
-                            supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資結算", "asset_name": inv_asset_link, "category": "證券賣出", "amount": total_cash_flow, "note": f"賣出庫存 {inv_name}，實收 {total_cash_flow}"}).execute()
-                            st.success(f"🎉 成功賣出 {inv_name}！")
-                        else:
-                            st.error(f"❌ 錯誤：您目前並無 {inv_name} 的持股庫存！")
-                    st.rerun()
+        tab_inv1, tab_inv2 = st.tabs(["🛒 常規日常交易下單", "📥 導入系統前舊投資持股"])
+        
+        with tab_inv1:
+            st.subheader("金融資產交易下單（動態連動扣款/入款）")
+            with st.form("invest_form", clear_on_submit=True):
+                col_i1, col_i2, col_i3, col_i4, col_i5 = st.columns(5)
+                inv_date = col_i1.date_input("交易日期", value=date.today())
+                inv_type = col_i2.selectbox("交易方向", ["買入", "賣出"])
+                inv_name = col_i3.text_input("股票代號 (如: 2330, 0050)", key="stock_code_regular")
+                inv_price = col_i4.number_input("買入/賣出單價 (元)", min_value=0.1, value=100.0)
+                inv_qty = col_i5.number_input("交易股數", min_value=1, value=1000)
+                inv_asset_link = st.selectbox("連動扣款/入款資產帳戶", asset_list, format_func=lambda x: x.replace("[", "").replace("]", " -> "))
+                
+                if st.form_submit_button("送出交易紀錄"):
+                    if inv_name and inv_asset_link:
+                        total_cash_flow = inv_price * inv_qty
+                        curr_asset_amt = next(x["amount"] for x in raw_assets if x["asset_name"] == inv_asset_link)
+                        
+                        if inv_type == "買入":
+                            supabase.table("own_assets").update({"amount": curr_asset_amt - total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
+                            supabase.table("portfolio").insert({
+                                "username": current_user, "date": str(inv_date), "asset_name": inv_name.strip(),
+                                "type": "買入", "cost": inv_price, "actual_cash": total_cash_flow, "status": "未實現"
+                            }).execute()
+                            supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資轉換", "asset_name": inv_asset_link, "category": "證券買入", "amount": total_cash_flow, "note": f"購入庫存 {inv_name} {inv_qty}股，成本 {inv_price}"}).execute()
+                            st.success(f"🎉 成功買入 {inv_name}！")
+                        
+                        elif inv_type == "賣出":
+                            unrealized_res = supabase.table("portfolio").select("*").eq("username", current_user).eq("asset_name", inv_name.strip()).eq("status", "未實現").execute()
+                            if unrealized_res.data:
+                                target_stock = unrealized_res.data[0]
+                                supabase.table("own_assets").update({"amount": curr_asset_amt + total_cash_flow}).eq("username", current_user).eq("asset_name", inv_asset_link).execute()
+                                supabase.table("portfolio").update({"type": "賣出", "cost": inv_price, "actual_cash": total_cash_flow, "status": "已實現"}).eq("id", target_stock["id"]).execute()
+                                supabase.table("transactions").insert({"username": current_user, "date": str(inv_date), "type": "投資結算", "asset_name": inv_asset_link, "category": "證券賣出", "amount": total_cash_flow, "note": f"賣出庫存 {inv_name}，實收 {total_cash_flow}"}).execute()
+                                st.success(f"🎉 成功賣出 {inv_name}！")
+                            else: st.error(f"❌ 錯誤：您目前並無 {inv_name} 的持股庫存！")
+                        st.rerun()
+                        
+        with tab_inv2:
+            st.subheader("📥 導入使用系統前購入的歷史庫存")
+            st.caption("💡 此功能僅增加未實現庫存市值，**絕不扣除**任何帳戶金額。適合用來校正初始投資資料。")
+            with st.form("history_invest_form", clear_on_submit=True):
+                col_h1, col_h2, col_h3, col_h4 = st.columns(4)
+                hist_date = col_h1.date_input("當初購入日期", value=date.today())
+                hist_name = col_h2.text_input("股票代號 (如: 2330, 2454)", key="stock_code_history")
+                hist_price = col_h3.number_input("當初買入平均單價 (元)", min_value=0.1, value=100.0)
+                hist_qty = col_h4.number_input("持有股數", min_value=1, value=1000)
+                
+                if st.form_submit_button("📥 立即加入歷史庫存庫"):
+                    if hist_name.strip():
+                        total_hist_cost = hist_price * hist_qty
+                        try:
+                            # 直接寫入投資組合，不扣現有帳戶餘額
+                            supabase.table("portfolio").insert({
+                                "username": current_user, "date": str(hist_date), "asset_name": hist_name.strip(),
+                                "type": "買入", "cost": hist_price, "actual_cash": total_hist_cost, "status": "未實現"
+                            }).execute()
+                            # 同步留下一筆純紀錄型態的流水帳
+                            supabase.table("transactions").insert({
+                                "username": current_user, "date": str(date.today()), "type": "收入", 
+                                "asset_name": "投資組合庫存", "category": "歷史庫存導入", "amount": total_hist_cost, "note": f"系統初始化：導入舊持有股票 {hist_name} 共 {hist_qty} 股"
+                            }).execute()
+                            
+                            st.success(f"🎉 歷史庫存 {hist_name} 導入成功！已納入即時大盤計算。")
+                            st.rerun()
+                        except Exception as ex: st.error(f"導入失敗: {ex}")
+                    else: st.warning("⚠️ 請填寫股票代號。")
 
         st.divider()
         st.subheader("💼 交易所即時連動大盤庫存 (每 30 秒自動跳動更新)")
