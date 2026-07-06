@@ -193,7 +193,6 @@ else:
     if not df_tx_all.empty:
         df_tx_all["date"] = pd.to_datetime(df_tx_all["date"]).dt.date
         df_tx_all["amount"] = df_tx_all["amount"].astype(float)
-        # 過濾掉內部功能標籤，保留日常記帳明細
         df_tx = df_tx_all[~df_tx_all["category"].isin(["證券買入", "證券賣出", "餘額微調", "帳戶劃轉-轉出", "帳戶劃轉-轉入", "歷史庫存導入"])].copy()
     else:
         df_tx = df_tx_all.copy()
@@ -291,12 +290,11 @@ else:
                     st.info("💡 今天還沒有常規消費記帳明細喔！")
 
     # ---------------------------------------------------------
-    # 模組 2：🏦 資產帳戶維護與多類別管理（已新增資產帳戶劃轉功能）
+    # 模組 2：🏦 資產帳戶維護與多類別管理
     # ---------------------------------------------------------
     elif module == "2. 🏦 資產帳戶與多類別維護":
         st.title("🏦 資產帳戶維護與多維度報表")
         
-        # 建立兩個分頁，一個管開戶、一個管劃轉
         tab_asset1, tab_asset2 = st.tabs(["➕ 建立新帳戶", "🔄 帳戶資金劃轉"])
         
         with tab_asset1:
@@ -344,11 +342,9 @@ else:
                                 amt_from = next(x["amount"] for x in raw_assets if x["asset_name"] == from_asset)
                                 amt_to = next(x["amount"] for x in raw_assets if x["asset_name"] == to_asset)
                                 
-                                # 更新金額
                                 supabase.table("own_assets").update({"amount": amt_from - transfer_amt}).eq("username", current_user).eq("asset_name", from_asset).execute()
                                 supabase.table("own_assets").update({"amount": amt_to + transfer_amt}).eq("username", current_user).eq("asset_name", to_asset).execute()
                                 
-                                # 寫入轉出與轉入兩筆流水帳紀錄
                                 supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "支出", "asset_name": from_asset, "category": "帳戶劃轉-轉出", "amount": transfer_amt, "note": f"{transfer_note} (流向: {to_asset})"}).execute()
                                 supabase.table("transactions").insert({"username": current_user, "date": str(date.today()), "type": "收入", "asset_name": to_asset, "category": "帳戶劃轉-轉入", "amount": transfer_amt, "note": f"{transfer_note} (來源: {from_asset})"}).execute()
                                 
@@ -397,7 +393,7 @@ else:
             st.info("💡 目前尚未建立任何資產帳戶，請使用上方表單建立一個吧！")
 
     # ---------------------------------------------------------
-    # 模組 3：📈 投資組合（已新增新增歷史庫存導入功能）
+    # 模組 3：📈 投資組合 (已整合 📥 歷史導入 與 🗑️ 庫存刪除功能)
     # ---------------------------------------------------------
     elif module == "3. 📈 投資組合 (交易所即時連動)":
         st.title("📈 交易所即時連動投資組合")
@@ -455,12 +451,10 @@ else:
                     if hist_name.strip():
                         total_hist_cost = hist_price * hist_qty
                         try:
-                            # 直接寫入投資組合，不扣現有帳戶餘額
                             supabase.table("portfolio").insert({
                                 "username": current_user, "date": str(hist_date), "asset_name": hist_name.strip(),
                                 "type": "買入", "cost": hist_price, "actual_cash": total_hist_cost, "status": "未實現"
                             }).execute()
-                            # 同步留下一筆純紀錄型態的流水帳
                             supabase.table("transactions").insert({
                                 "username": current_user, "date": str(date.today()), "type": "收入", 
                                 "asset_name": "投資組合庫存", "category": "歷史庫存導入", "amount": total_hist_cost, "note": f"系統初始化：導入舊持有股票 {hist_name} 共 {hist_qty} 股"
@@ -475,10 +469,10 @@ else:
         st.subheader("💼 交易所即時連動大盤庫存 (每 30 秒自動跳動更新)")
         p_col1, p_col2 = st.columns(2)
         
+        df_unreal = df_pf[df_pf["status"] == "未實現"].copy() if not df_pf.empty else pd.DataFrame()
+        
         with p_col1:
             st.write("🔍 **未實現損益（即時聯網爬取最新市場價格）**")
-            df_unreal = df_pf[df_pf["status"] == "未實現"].copy() if not df_pf.empty else pd.DataFrame()
-            
             if not df_unreal.empty:
                 live_prices = []
                 live_market_values = []
@@ -531,3 +525,32 @@ else:
                 st.dataframe(df_real[["date", "asset_name", "actual_cash"]].rename(columns={"date": "結算日期", "asset_name": "股票代號", "actual_cash": "賣出變現總額"}), use_container_width=True)
             else: 
                 st.info("目前尚無已實現的賣出獲利紀錄。")
+
+        # ---------------------------------------------------------
+        # 🗑️ 新增功能：庫存進階設定管理 (手動刪除錯誤庫存紀錄)
+        # ---------------------------------------------------------
+        if not df_unreal.empty:
+            st.divider()
+            st.subheader("🔧 庫存進階設定管理")
+            st.caption("🚨 注意：此功能用於手動剔除錯誤輸入的股票紀錄（非賣出平倉交易）。刪除庫存將不會退回或變更任何資產帳戶餘額。")
+            
+            # 建立選取選單格式
+            df_unreal["selector_label"] = df_unreal.apply(
+                lambda r: f"代號: {r['asset_name']} | 購入日: {r['date']} | 投入本金: {float(r['actual_cash']):,.0f}元", axis=1
+            )
+            
+            target_stock_label = st.selectbox("選擇要徹底刪除的持股庫存紀錄", options=df_unreal["selector_label"].tolist())
+            
+            # 找出對應紀錄的 ID
+            selected_row = df_unreal[df_unreal["selector_label"] == target_stock_label].iloc[0]
+            target_id = selected_row["id"]
+            target_code = selected_row["asset_name"]
+            
+            if st.button(f"🗑️ 徹底刪除代號 {target_code} 的這筆持股庫存", type="secondary", use_container_width=True):
+                try:
+                    # 自 portfolio 表中刪除對應的唯一 ID 庫存
+                    supabase.table("portfolio").delete().eq("id", target_id).eq("username", current_user).execute()
+                    st.success(f"💥 已成功將該筆股票庫存紀錄自系統中完整抹除！")
+                    st.rerun()
+                except Exception as del_err:
+                    st.error(f"刪除庫存失敗，詳細錯誤訊息: {del_err}")
