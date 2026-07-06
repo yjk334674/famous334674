@@ -181,15 +181,12 @@ else:
         st.error(f"📡 資料庫連線或欄位對照出錯。錯誤: {api_err}")
         st.stop()
 
-    # 建立資產清單，用於記帳選擇
     asset_list = [x["asset_name"] for x in assets_res.data] if assets_res.data else []
     
-    # 轉換與解析資產類別數據
     raw_assets = assets_res.data if assets_res.data else []
     parsed_assets = []
     for a in raw_assets:
         name = a["asset_name"]
-        # 如果帶有格式 [類別] 名稱，則進行拆分
         if name.startswith("[") and "]" in name:
             pos = name.find("]")
             a_type = name[1:pos]
@@ -252,7 +249,6 @@ else:
         st.divider()
         st.subheader("📊 多元資產類別分佈比例")
         if not df_assets_parsed.empty:
-            # 建立大盤分類總覽表格
             df_summary = df_assets_parsed.groupby("資產類別")["餘額 (元)"].sum().reset_index()
             if invest_sum > 0:
                 df_summary = pd.concat([df_summary, pd.DataFrame([{"資產類別": "證券投資 (台美股)", "餘額 (元)": invest_sum}])], ignore_index=True)
@@ -278,7 +274,6 @@ else:
                     tx_date = st.date_input("記帳日期", value=date.today())
                     tx_type = st.selectbox("交易類型", ["支出", "收入"])
                     
-                    # 顯示優化後的帳戶選單
                     asset_labels = {}
                     for x in raw_assets:
                         n = x["asset_name"]
@@ -310,12 +305,12 @@ else:
                     st.info("💡 今天還沒有常規消費記帳明細喔！")
 
     # ---------------------------------------------------------
-    # 模組 2：🏦 資產帳戶維護與多類別新增
+    # 模組 2：🏦 資產帳戶維護與多類別管理 (新增、更新與刪除)
     # ---------------------------------------------------------
     elif module == "2. 🏦 資產帳戶與多類別維護":
         st.title("🏦 資產帳戶維護與多維度報表")
         
-        # 增加資產類別功能區
+        # A. 新增資產帳戶區
         st.subheader("➕ 建立新資產帳戶（支援多種類別）")
         with st.form("new_asset_categorical"):
             col_a, col_b, col_c = st.columns(3)
@@ -326,7 +321,6 @@ else:
             if st.form_submit_button("💾 立即新增此資產帳戶"):
                 if custom_name:
                     combined_name = f"[{asset_class}]{custom_name}"
-                    # 檢查是否重複
                     if combined_name in asset_list:
                         st.error("❌ 該資產名稱已存在！")
                     else:
@@ -342,15 +336,21 @@ else:
         if not df_assets_parsed.empty:
             st.dataframe(df_assets_parsed[["資產類別", "帳戶名稱", "餘額 (元)"]], use_container_width=True)
             
-            st.write("🔧 **帳戶餘額微調與重命名**")
-            edit_col1, edit_col2, edit_col3 = st.columns(3)
-            target_asset = edit_col1.selectbox("選擇要變更的帳戶", options=df_assets_parsed["id_key"].tolist(), format_func=lambda x: x.replace("[", "").replace("]", " -> "))
+            # B. 編輯與刪除資產控制台
+            st.write("🔧 **帳戶進階設定管理 (編輯名稱、調整餘額、刪除帳戶)**")
             
+            # 選擇目標帳戶
+            target_asset = st.selectbox("選擇要處理的帳戶", options=df_assets_parsed["id_key"].tolist(), format_func=lambda x: x.replace("[", "").replace("]", " -> "), key="asset_manager_select")
             current_row = df_assets_parsed[df_assets_parsed["id_key"] == target_asset].iloc[0]
-            new_name = edit_col2.text_input("重命名此資產名稱 (不包含分類標籤)", value=current_row["帳戶名稱"])
-            new_balance = edit_col3.number_input("直接微調新餘額 (元)", min_value=0.0, value=float(current_row["餘額 (元)"]))
             
-            if st.button("💾 確認更新帳戶設定"):
+            edit_col1, edit_col2 = st.columns(2)
+            new_name = edit_col1.text_input("重命名此資產名稱 (免填分類標籤)", value=current_row["帳戶名稱"])
+            new_balance = edit_col2.number_input("直接微調新餘額 (元)", min_value=0.0, value=float(current_row["餘額 (元)"]))
+            
+            btn_col1, btn_col2 = st.columns([1, 1])
+            
+            # 儲存更新按鈕
+            if btn_col1.button("💾 儲存變更設定", use_container_width=True, type="primary"):
                 old_balance = float(current_row["餘額 (元)"])
                 fixed_combined_name = f"[{current_row['資產類別']}]{new_name}"
                 
@@ -362,8 +362,20 @@ else:
                     }).execute()
                 
                 supabase.table("own_assets").update({"asset_name": fixed_combined_name, "amount": new_balance}).eq("username", current_user).eq("asset_name", target_asset).execute()
-                st.success("⚙️ 帳戶類別資訊與餘額更新完畢！")
+                st.success("⚙️ 帳戶資訊與餘額更新完畢！")
                 st.rerun()
+                
+            # 💡 【新增】刪除資產帳戶按鈕與安全防護機制
+            if btn_col2.button("🗑️ 徹底刪除此資產帳戶", use_container_width=True, type="secondary"):
+                try:
+                    # 1. 從 own_assets 移出該資產
+                    supabase.table("own_assets").delete().eq("username", current_user).eq("asset_name", target_asset).execute()
+                    # 2. 一併清除關聯的交易紀錄以防破圖
+                    supabase.table("transactions").delete().eq("username", current_user).eq("asset_name", target_asset).execute()
+                    st.success(f"💥 已成功將帳戶「{target_asset}」及其關聯記帳明細完整移除！")
+                    st.rerun()
+                except Exception as del_err:
+                    st.error(f"刪除失敗，錯誤訊息: {del_err}")
         else:
             st.info("💡 目前尚未建立任何資產帳戶，請使用上方表單建立一個吧！")
 
